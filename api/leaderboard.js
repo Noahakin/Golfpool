@@ -1,4 +1,8 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
+
+// Configure Chromium for serverless
+chromium.setGraphicsMode(false);
 
 module.exports = async (req, res) => {
   // Set CORS headers
@@ -25,8 +29,11 @@ module.exports = async (req, res) => {
     console.log('Launching browser...');
     
     const browserPromise = puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+      ignoreHTTPSErrors: true,
     });
     
     // Add timeout for browser launch
