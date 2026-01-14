@@ -44,8 +44,8 @@ app.get('/api/leaderboard', async (req, res) => {
     console.log('Launching browser...');
     
     const browserPromise = puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      headless: "new",
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
     });
     
     // Add timeout for browser launch
