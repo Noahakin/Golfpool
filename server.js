@@ -98,6 +98,11 @@ app.get('/api/leaderboard', async (req, res) => {
     console.log('Page fetched successfully');
     console.log('Parsing HTML...');
     
+    // Debug: Check raw HTML first
+    const rawHTML = response.data;
+    console.log('Raw HTML length:', rawHTML ? rawHTML.length : 0);
+    console.log('Raw HTML (first 1000 chars):', rawHTML ? rawHTML.substring(0, 1000) : 'No HTML');
+    
     // Load HTML into cheerio
     const $ = cheerio.load(response.data);
     
@@ -105,9 +110,24 @@ app.get('/api/leaderboard', async (req, res) => {
     const pageInfo = {
       title: $('title').text(),
       tables: $('table').length,
-      oddsElements: $('[class*="odds"], [class*="Odds"]').length
+      oddsElements: $('[class*="odds"], [class*="Odds"]').length,
+      divsWithOdds: $('div[class*="odds"], div[class*="Odds"]').length,
+      allDivs: $('div').length
     };
     console.log('Page info:', pageInfo);
+    
+    // Debug: Check for player-related elements
+    console.log('Elements with "player" in class:', $('[class*="player"], [class*="Player"]').length);
+    console.log('Elements with "betting" in class:', $('[class*="betting"], [class*="Betting"]').length);
+    
+    // Debug: Look for any structured data
+    const bodyText = $('body').text();
+    console.log('Body text (first 500 chars):', bodyText ? bodyText.substring(0, 500) : 'No body text');
+    
+    // Debug: Check if there are any rows or list items that might contain player data
+    console.log('Total <tr> elements:', $('tr').length);
+    console.log('Total <li> elements:', $('li').length);
+    console.log('Total <div> elements:', $('div').length);
     
     // Debug: Save a sample of the HTML to see what we're working with
     const firstTable = $('table').first();
