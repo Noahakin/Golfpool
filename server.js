@@ -162,142 +162,86 @@ app.get('/api/leaderboard', async (req, res) => {
                lowerText.length > 50; // Player names are usually 3-50 chars
       };
       
-      // Strategy 1: Look for tables with odds/leaderboard data
-      // First, try to find tables that are specifically for odds/leaderboard
-      const oddsTables = $('table').filter((idx, table) => {
-        const $table = $(table);
-        const tableText = $table.text().toLowerCase();
-        // Look for tables that mention odds, betting, or have player-related content
-        return tableText.includes('odds') || 
-               tableText.includes('betting') || 
-               tableText.includes('player') ||
-               $table.find('[class*="odds"], [class*="player"], [class*="betting"]').length > 0;
-      });
-      
-      // If no specific odds tables found, use all tables
-      const tables = oddsTables.length > 0 ? oddsTables : $('table');
+      // Strategy 1: Target the specific odds table structure
+      // Based on inspection: table > tbody > tr > td[0]=pos, td[1]=name, td[2]=score, td[5]=odds
+      const tables = $('table');
       
       tables.each((tableIndex, table) => {
         const $table = $(table);
-        const rows = $table.find('tr');
-        const headerRow = rows.first();
-        let oddsColumnIndex = -1;
-        let nameColumnIndex = -1;
-        let positionColumnIndex = -1;
+        const rows = $table.find('tbody tr, tbody > tr');
         
-        // Try to identify column indices from header
-        if (headerRow.length > 0) {
-          const headerCells = $(headerRow).find('th, td');
-          headerCells.each((idx, cell) => {
-            const headerText = cleanText($(cell).text()).toLowerCase();
-            if (headerText.includes('odds') || headerText.includes('betting')) {
-              oddsColumnIndex = idx;
-            }
-            if (headerText.includes('player') || headerText.includes('name')) {
-              nameColumnIndex = idx;
-            }
-            if (headerText.includes('position') || headerText.includes('pos') || headerText.includes('rank')) {
-              positionColumnIndex = idx;
-            }
-          });
-        }
+        // If no tbody, try all rows except header
+        const allRows = rows.length > 0 ? rows : $table.find('tr').slice(1);
         
-        rows.each((rowIndex, row) => {
+        allRows.each((rowIndex, row) => {
           const $row = $(row);
           const cells = $row.find('td');
-          if (cells.length >= 2) {
-            const rowText = cells.map((idx, cell) => cleanText($(cell).text())).get();
-            
-            // Skip header rows
-            if (rowText.some(text => text.toLowerCase().includes('position') || 
-                                   text.toLowerCase().includes('player') ||
-                                   text.toLowerCase().includes('odds') ||
-                                   text.toLowerCase().includes('rank'))) {
-              return;
+          
+          // Need at least 6 cells for the odds table structure
+          if (cells.length >= 6) {
+            // Position (cell 0)
+            let position = cleanText(cells.eq(0).text());
+            if (!position || position === '-' || position === '') {
+              position = (players.length + 1).toString();
             }
             
-            let playerData = {
-              position: '',
-              name: '',
-              odds: '',
-              score: ''
-            };
+            // Player name (cell 1) - get the last generic/span/div element which contains the actual name
+            const nameCell = cells.eq(1);
+            let name = '';
             
-            // Try to identify columns using header info or pattern matching
-            cells.each((idx, cell) => {
-              const text = cleanText($(cell).text());
-              
-              // Use header info if available
-              if (idx === oddsColumnIndex && oddsColumnIndex >= 0) {
-                playerData.odds = text || 'N/A';
-              } else if (idx === nameColumnIndex && nameColumnIndex >= 0) {
-                playerData.name = text;
-              } else if (idx === positionColumnIndex && positionColumnIndex >= 0) {
-                playerData.position = text;
-              }
-              // Otherwise, try pattern matching
-              else {
-                // Position (usually first column, numeric)
-                if (idx === 0 && /^\d+$/.test(text)) {
-                  playerData.position = text;
-                }
-                // Odds detection (improved patterns)
-                else if (isOdds(text)) {
-                  if (!playerData.odds || playerData.odds === 'N/A') {
-                    playerData.odds = text;
-                  }
-                }
-                // Score (numeric, could be negative, typically small numbers)
-                else if (/^-?\d+$/.test(text) && parseInt(text) < 100 && parseInt(text) > -30) {
-                  if (!playerData.score) playerData.score = text;
-                }
-                // Player name (usually longer text, not numeric, not odds, not excluded patterns)
-                else if (text.length > 2 && 
-                         text.length <= 50 &&
-                         !/^\d+$/.test(text) && 
-                         !isOdds(text) &&
-                         !isExcludedText(text) &&
-                         !text.toLowerCase().includes('position') &&
-                         !text.toLowerCase().includes('round') &&
-                         !text.toLowerCase().includes('total') &&
-                         !text.toLowerCase().includes('signature') &&
-                         !text.toLowerCase().includes('how it works') &&
-                         !text.toLowerCase().includes('groupings') &&
-                         !text.toLowerCase().includes('country club') &&
-                         !text.toLowerCase().includes('marketing') &&
-                         !text.toLowerCase().includes('fan') &&
-                         !text.toLowerCase().includes('shop') &&
-                         !text.toLowerCase().includes('tickets')) {
-                  if (!playerData.name) playerData.name = text;
-                }
-              }
+            // Try to find the name in nested elements (last generic/span/div)
+            const nameElements = nameCell.find('generic, span, div').filter((idx, el) => {
+              const text = cleanText($(el).text());
+              return text.length > 2 && text.length < 50 && 
+                     !text.toLowerCase().includes('favorite') &&
+                     !text.match(/^(USA|KOR|JPN|ENG|CAN|FIJ|SCO|COL|AUS|BEL|FRA|NOR|PHI|ARG|IRL|RSA|SWE|MEX|PUR|CHN|GER)$/);
             });
             
-            // Also check for odds in nearby elements or data attributes
-            if (playerData.name && !playerData.odds) {
-              // Look for odds in the row or nearby
-              const oddsElements = $row.find('[class*="odds"], [class*="Odds"], [data-odds], [data-betting]');
-              oddsElements.each((idx, el) => {
-                const oddsText = cleanText($(el).text());
-                if (isOdds(oddsText)) {
-                  playerData.odds = oddsText;
-                }
-              });
-              
-              // Check data attributes
-              const dataOdds = $row.attr('data-odds') || $row.find('[data-odds]').first().attr('data-odds');
-              if (dataOdds && isOdds(dataOdds)) {
-                playerData.odds = dataOdds;
+            if (nameElements.length > 0) {
+              // Get the last element which should be the player name
+              name = cleanText(nameElements.last().text());
+            } else {
+              // Fallback: get all text and clean it
+              name = cleanText(nameCell.text());
+              // Remove country codes and "Favorite" text
+              name = name.replace(/\b(USA|KOR|JPN|ENG|CAN|FIJ|SCO|COL|AUS|BEL|FRA|NOR|PHI|ARG|IRL|RSA|SWE|MEX|PUR|CHN|GER|Favorite)\b/gi, '').trim();
+            }
+            
+            // Score (cell 2) - Total
+            const score = cleanText(cells.eq(2).text()) || '-';
+            
+            // Odds (cell 5) - get button text
+            const oddsCell = cells.eq(5);
+            const oddsButton = oddsCell.find('button');
+            let odds = 'N/A';
+            
+            if (oddsButton.length > 0) {
+              let oddsText = cleanText(oddsButton.text());
+              // Remove "Up" or "Down" prefixes
+              oddsText = oddsText.replace(/^(Up|Down)\s*/i, '').trim();
+              if (isOdds(oddsText)) {
+                odds = oddsText;
+              }
+            } else {
+              // Fallback: check cell text
+              const oddsText = cleanText(oddsCell.text());
+              if (isOdds(oddsText)) {
+                odds = oddsText.replace(/^(Up|Down)\s*/i, '').trim();
               }
             }
             
-            // Only add if we have a valid player name (not excluded text)
-            if (playerData.name && 
-                playerData.name.length > 1 && 
-                !isExcludedText(playerData.name)) {
-              if (!playerData.position) playerData.position = (players.length + 1).toString();
-              if (!playerData.odds || playerData.odds === '') playerData.odds = 'N/A';
-              players.push(playerData);
+            // Validate and add player
+            if (name && 
+                name.length > 2 && 
+                name.length <= 50 &&
+                !isExcludedText(name) &&
+                !name.toLowerCase().includes('advertisement')) {
+              players.push({
+                position: position,
+                name: name,
+                odds: odds,
+                score: score
+              });
             }
           }
         });
