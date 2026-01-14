@@ -266,14 +266,14 @@ app.get('/api/odds', async (req, res) => {
     });
     
     // Save snapshot
-    const snapshot = saveOddsSnapshot(tournamentData.description || tournament, tieredPlayers);
+    const newSnapshot = saveOddsSnapshot(tournamentData.description || tournament, tieredPlayers);
     
     console.log(`Fetched ${tieredPlayers.length} players with odds`);
     
     res.json({
       tournament: tournamentData.description || tournament,
       players: tieredPlayers,
-      lastUpdated: snapshot.timestamp,
+      lastUpdated: newSnapshot.timestamp,
       cached: false
     });
     
