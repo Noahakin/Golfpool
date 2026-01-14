@@ -1,7 +1,9 @@
 // API URL - automatically detects if running locally or on a deployed site
+// Update RAILWAY_URL with your Railway deployment URL once deployed
+const RAILWAY_URL = 'https://your-app-name.railway.app'; // UPDATE THIS with your Railway URL
 const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? '/api/leaderboard'  // Local development
-    : `https://${window.location.hostname}/api/leaderboard`;  // Production - uses same domain as frontend
+    : `${RAILWAY_URL}/api/leaderboard`;  // Production - uses Railway backend
 
 // Global state
 let allPlayersData = null;
