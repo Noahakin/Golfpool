@@ -43,8 +43,12 @@ app.get('/api/leaderboard', async (req, res) => {
     console.log(`[${new Date().toLocaleTimeString()}] Starting request...`);
     console.log('Launching browser...');
     
+    // Use system Chromium if available (Render), otherwise use Puppeteer's Chrome
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+    
     const browserPromise = puppeteer.launch({
       headless: "new",
+      executablePath: executablePath,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
     });
     

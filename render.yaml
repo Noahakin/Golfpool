@@ -2,8 +2,10 @@ services:
   - type: web
     name: golfpool-backend
     env: node
-    buildCommand: npm install
+    buildCommand: apt-get update && apt-get install -y chromium-browser chromium-chromedriver && npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: "/usr/bin/chromium-browser"
