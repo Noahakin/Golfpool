@@ -172,7 +172,10 @@ app.get('/api/odds', async (req, res) => {
     console.log('Fetching odds from The Odds API...');
     
     // First, check available sports to find the correct golf sport key
+    // Prioritize general PGA Tour golf over tournament-specific keys
     let golfSportKey = 'golf';
+    const golfSportKeys = [];
+    
     try {
       const sportsResponse = await axios.get(`https://api.the-odds-api.com/v4/sports`, {
         params: { apiKey: apiKey },
@@ -180,14 +183,30 @@ app.get('/api/odds', async (req, res) => {
       });
       
       if (sportsResponse.data) {
-        // Find golf sport key (might be 'golf', 'golf_pga', 'golf_masters', etc.)
-        const golfSport = sportsResponse.data.find(sport => 
+        // Find all golf-related sport keys
+        const allGolfSports = sportsResponse.data.filter(sport => 
           sport.key && (sport.key.toLowerCase().includes('golf') || sport.title.toLowerCase().includes('golf'))
         );
         
-        if (golfSport) {
-          golfSportKey = golfSport.key;
-          console.log(`Found golf sport key: ${golfSportKey}`);
+        console.log('All golf sports found:', allGolfSports.map(s => `${s.key} (${s.title})`).join(', '));
+        
+        // Prioritize general golf keys over tournament-specific ones
+        // Look for: golf, golf_pga, golf_pga_tour, etc. (not golf_masters, golf_us_open, etc.)
+        const generalGolf = allGolfSports.find(sport => {
+          const key = sport.key.toLowerCase();
+          return key === 'golf' || 
+                 key === 'golf_pga' || 
+                 key === 'golf_pga_tour' ||
+                 (key.includes('golf') && !key.includes('masters') && !key.includes('us_open') && !key.includes('pga_championship') && !key.includes('open_championship'));
+        });
+        
+        if (generalGolf) {
+          golfSportKey = generalGolf.key;
+          console.log(`Using general golf sport key: ${golfSportKey}`);
+        } else if (allGolfSports.length > 0) {
+          // Fallback to first golf sport found
+          golfSportKey = allGolfSports[0].key;
+          console.log(`Using first golf sport found: ${golfSportKey}`);
         } else {
           console.log('Golf not found in available sports. Available sports:', sportsResponse.data.map(s => s.key).join(', '));
         }
@@ -197,16 +216,47 @@ app.get('/api/odds', async (req, res) => {
     }
     
     // Try to get events first, then odds for each event
+    // If the first golf sport key doesn't have Sony Open, try other golf keys
     let tournamentData = null;
+    let allGolfSportKeys = [golfSportKey];
     
+    // Get list of all golf sport keys to try
     try {
-      // Get events for golf
-      const eventsResponse = await axios.get(`https://api.the-odds-api.com/v4/sports/${golfSportKey}/events`, {
+      const sportsResponse = await axios.get(`https://api.the-odds-api.com/v4/sports`, {
         params: { apiKey: apiKey },
-        timeout: 30000
+        timeout: 10000
       });
       
-      if (eventsResponse.data && eventsResponse.data.length > 0) {
+      if (sportsResponse.data) {
+        allGolfSportKeys = sportsResponse.data
+          .filter(sport => sport.key && sport.key.toLowerCase().includes('golf'))
+          .map(sport => sport.key);
+        
+        // Prioritize general golf keys first
+        const generalKeys = allGolfSportKeys.filter(k => 
+          k === 'golf' || k === 'golf_pga' || k === 'golf_pga_tour' ||
+          (k.includes('golf') && !k.includes('masters') && !k.includes('us_open') && !k.includes('pga_championship') && !k.includes('open_championship'))
+        );
+        const specificKeys = allGolfSportKeys.filter(k => !generalKeys.includes(k));
+        allGolfSportKeys = [...generalKeys, ...specificKeys];
+        
+        console.log(`Will try golf sport keys in order: ${allGolfSportKeys.join(', ')}`);
+      }
+    } catch (e) {
+      console.log('Could not get all golf keys, using single key');
+    }
+    
+    // Try each golf sport key until we find Sony Open
+    for (const sportKey of allGolfSportKeys) {
+      try {
+        console.log(`Trying golf sport key: ${sportKey}`);
+        // Get events for this golf sport key
+        const eventsResponse = await axios.get(`https://api.the-odds-api.com/v4/sports/${sportKey}/events`, {
+          params: { apiKey: apiKey },
+          timeout: 30000
+        });
+        
+        if (eventsResponse.data && eventsResponse.data.length > 0) {
         const now = new Date();
         const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
         
@@ -222,12 +272,20 @@ app.get('/api/odds', async (req, res) => {
         
         // First, try to find exact tournament name match in upcoming events
         const tournamentLower = tournament.toLowerCase();
+        // For "Sony Open in Hawaii", look for "sony" and "open" and "hawaii"
+        const keywords = tournamentLower.split(' ').filter(w => w.length > 2);
+        console.log(`Searching for tournament with keywords: ${keywords.join(', ')}`);
+        
         tournamentData = upcomingEvents.find(event => {
           if (!event.description) return false;
           const descLower = event.description.toLowerCase();
-          // Check for multiple keywords from tournament name
-          const keywords = tournamentLower.split(' ').filter(w => w.length > 2);
-          return keywords.some(keyword => descLower.includes(keyword));
+          // Check if description contains multiple keywords (better match)
+          const matchingKeywords = keywords.filter(keyword => descLower.includes(keyword));
+          if (matchingKeywords.length >= 2) {
+            console.log(`Found match: "${event.description}" (matched keywords: ${matchingKeywords.join(', ')})`);
+            return true;
+          }
+          return false;
         });
         
         // If no exact match, use the most immediate upcoming tournament
@@ -260,12 +318,21 @@ app.get('/api/odds', async (req, res) => {
           }
         }
         
-        if (tournamentData) {
-          console.log(`Selected tournament: "${tournamentData.description}" (ID: ${tournamentData.id}, Date: ${tournamentData.commenceTime || 'unknown'})`);
+          if (tournamentData) {
+            console.log(`Selected tournament: "${tournamentData.description}" (ID: ${tournamentData.id}, Date: ${tournamentData.commenceTime || 'unknown'})`);
+            golfSportKey = sportKey; // Use this sport key for odds fetching
+            break; // Found the tournament, stop trying other keys
+          }
         }
+      } catch (eventsError) {
+        console.log(`Could not fetch events for ${sportKey}, trying next key...`);
+        continue; // Try next golf sport key
       }
-    } catch (eventsError) {
-      console.log('Could not fetch events, trying direct odds endpoint...');
+    }
+    
+    // If we still don't have tournamentData, try direct odds endpoint with the best golf key
+    if (!tournamentData) {
+      console.log('Could not find tournament in events, trying direct odds endpoint...');
     }
     
     // If we have an event, get odds for it; otherwise try the odds endpoint directly
@@ -317,11 +384,19 @@ app.get('/api/odds', async (req, res) => {
       
       // Find matching tournament in upcoming events first
       const tournamentLower = tournament.toLowerCase();
+      const keywords = tournamentLower.split(' ').filter(w => w.length > 2);
+      console.log(`Direct endpoint: Searching for tournament with keywords: ${keywords.join(', ')}`);
+      
       tournamentData = upcomingEvents.find(event => {
         if (!event.description) return false;
         const descLower = event.description.toLowerCase();
-        const keywords = tournamentLower.split(' ').filter(w => w.length > 2);
-        return keywords.some(keyword => descLower.includes(keyword));
+        // Check if description contains multiple keywords (better match)
+        const matchingKeywords = keywords.filter(keyword => descLower.includes(keyword));
+        if (matchingKeywords.length >= 2) {
+          console.log(`Found match: "${event.description}" (matched keywords: ${matchingKeywords.join(', ')})`);
+          return true;
+        }
+        return false;
       });
       
       // If no match in upcoming, try all events
@@ -329,8 +404,12 @@ app.get('/api/odds', async (req, res) => {
         tournamentData = response.data.find(event => {
           if (!event.description) return false;
           const descLower = event.description.toLowerCase();
-          const keywords = tournamentLower.split(' ').filter(w => w.length > 2);
-          return keywords.some(keyword => descLower.includes(keyword));
+          const matchingKeywords = keywords.filter(keyword => descLower.includes(keyword));
+          if (matchingKeywords.length >= 2) {
+            console.log(`Found match in all events: "${event.description}" (matched keywords: ${matchingKeywords.join(', ')})`);
+            return true;
+          }
+          return false;
         });
       }
       
