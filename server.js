@@ -148,9 +148,9 @@ app.get('/api/leaderboard', async (req, res) => {
       
       // Strategy 1: Target the specific odds table structure
       // Based on inspection: table > tbody > tr > td[0]=pos, td[1]=name, td[2]=score, td[5]=odds
-      const tables = $('table');
+      const oddsTables = $('table');
       
-      tables.each((tableIndex, table) => {
+      oddsTables.each((tableIndex, table) => {
         const $table = $(table);
         const rows = $table.find('tbody tr, tbody > tr');
         
