@@ -147,17 +147,38 @@ app.get('/api/leaderboard', async (req, res) => {
       };
       
       // Strategy 1: Target the specific odds table structure
-      // Based on inspection: table > tbody > tr > td[0]=pos, td[1]=name, td[2]=score, td[5]=odds
-      const oddsTables = $('table');
+      // Find the table that has "Odds" in its header or contains odds data
+      const allTables = $('table');
+      let oddsTable = null;
       
-      oddsTables.each((tableIndex, table) => {
+      // Find the table with "Odds" column header
+      allTables.each((idx, table) => {
         const $table = $(table);
-        const rows = $table.find('tbody tr, tbody > tr');
+        const headerText = $table.find('th, thead tr, tr:first-child').text().toLowerCase();
+        if (headerText.includes('odds') && headerText.includes('player')) {
+          oddsTable = $table;
+          return false; // break
+        }
+      });
+      
+      // If not found, try the first table with 6+ columns
+      if (!oddsTable) {
+        allTables.each((idx, table) => {
+          const $table = $(table);
+          const firstRow = $table.find('tr').first();
+          const cells = firstRow.find('th, td');
+          if (cells.length >= 6) {
+            oddsTable = $table;
+            return false; // break
+          }
+        });
+      }
+      
+      if (oddsTable) {
+        const $table = $(oddsTable);
+        const rows = $table.find('tbody tr, tr').not(':first-child'); // Skip header row
         
-        // If no tbody, try all rows except header
-        const allRows = rows.length > 0 ? rows : $table.find('tr').slice(1);
-        
-        allRows.each((rowIndex, row) => {
+        rows.each((rowIndex, row) => {
           const $row = $(row);
           const cells = $row.find('td');
           
@@ -169,26 +190,41 @@ app.get('/api/leaderboard', async (req, res) => {
               position = (players.length + 1).toString();
             }
             
-            // Player name (cell 1) - get the last generic/span/div element which contains the actual name
+            // Player name (cell 1) - extract from nested elements
             const nameCell = cells.eq(1);
             let name = '';
             
-            // Try to find the name in nested elements (last generic/span/div)
-            const nameElements = nameCell.find('generic, span, div').filter((idx, el) => {
+            // Try to find text that looks like a player name (First Last format)
+            // Look in all nested elements
+            const allTexts = [];
+            nameCell.find('*').each((idx, el) => {
               const text = cleanText($(el).text());
-              return text.length > 2 && text.length < 50 && 
-                     !text.toLowerCase().includes('favorite') &&
-                     !text.match(/^(USA|KOR|JPN|ENG|CAN|FIJ|SCO|COL|AUS|BEL|FRA|NOR|PHI|ARG|IRL|RSA|SWE|MEX|PUR|CHN|GER)$/);
+              // Check if it matches player name pattern (2-3 words, capitalized)
+              if (text.match(/^[A-Z][a-z]+ [A-Z][a-z]+/) && 
+                  text.length > 5 && text.length < 40 &&
+                  !text.toLowerCase().includes('favorite') &&
+                  !text.match(/^(USA|KOR|JPN|ENG|CAN|FIJ|SCO|COL|AUS|BEL|FRA|NOR|PHI|ARG|IRL|RSA|SWE|MEX|PUR|CHN|GER)$/)) {
+                allTexts.push(text);
+              }
             });
             
-            if (nameElements.length > 0) {
-              // Get the last element which should be the player name
-              name = cleanText(nameElements.last().text());
+            // Get the longest matching text (likely the full name)
+            if (allTexts.length > 0) {
+              name = allTexts.sort((a, b) => b.length - a.length)[0];
             } else {
               // Fallback: get all text and clean it
               name = cleanText(nameCell.text());
-              // Remove country codes and "Favorite" text
-              name = name.replace(/\b(USA|KOR|JPN|ENG|CAN|FIJ|SCO|COL|AUS|BEL|FRA|NOR|PHI|ARG|IRL|RSA|SWE|MEX|PUR|CHN|GER|Favorite)\b/gi, '').trim();
+              // Remove country codes, "Favorite", and other noise
+              name = name.replace(/\b(USA|KOR|JPN|ENG|CAN|FIJ|SCO|COL|AUS|BEL|FRA|NOR|PHI|ARG|IRL|RSA|SWE|MEX|PUR|CHN|GER|Favorite|Create|Account|Sign|Up|In|Quick|Links|Weather|Your|Opt|Out|Preference|Signal|Honored|Switch|Label|Search|Icon|Filter|Apply|Cancel|Consent|Leg|Interest|Reject|All|Confirm|My|Choices|Aon|Better|Decisions)\b/gi, '').trim();
+              // Extract just the name part (should be 2-3 words)
+              const nameParts = name.split(/\s+/).filter(part => 
+                part.length > 1 && 
+                !part.match(/^[A-Z]{2,3}$/) && // Not country codes
+                part.match(/^[A-Z][a-z]+$/) // Proper capitalization
+              );
+              if (nameParts.length >= 2) {
+                name = nameParts.slice(0, 3).join(' '); // Take first 2-3 words
+              }
             }
             
             // Score (cell 2) - Total
@@ -214,12 +250,28 @@ app.get('/api/leaderboard', async (req, res) => {
               }
             }
             
-            // Validate and add player
+            // Validate and add player - must match player name pattern
             if (name && 
-                name.length > 2 && 
-                name.length <= 50 &&
+                name.match(/^[A-Z][a-z]+ [A-Z][a-z]+/) && // Must be First Last format
+                name.length > 5 && 
+                name.length <= 40 &&
                 !isExcludedText(name) &&
-                !name.toLowerCase().includes('advertisement')) {
+                !name.toLowerCase().includes('advertisement') &&
+                !name.toLowerCase().includes('create') &&
+                !name.toLowerCase().includes('account') &&
+                !name.toLowerCase().includes('sign') &&
+                !name.toLowerCase().includes('quick') &&
+                !name.toLowerCase().includes('links') &&
+                !name.toLowerCase().includes('weather') &&
+                !name.toLowerCase().includes('search') &&
+                !name.toLowerCase().includes('filter') &&
+                !name.toLowerCase().includes('apply') &&
+                !name.toLowerCase().includes('cancel') &&
+                !name.toLowerCase().includes('consent') &&
+                !name.toLowerCase().includes('reject') &&
+                !name.toLowerCase().includes('confirm') &&
+                !name.toLowerCase().includes('choices') &&
+                !name.toLowerCase().includes('aon')) {
               players.push({
                 position: position,
                 name: name,
@@ -229,7 +281,7 @@ app.get('/api/leaderboard', async (req, res) => {
             }
           }
         });
-      });
+      }
       
       // Strategy 2: Look for list items or divs with player data (even if we found some players, try to get odds)
       const playerContainers = $(
