@@ -109,6 +109,20 @@ app.get('/api/leaderboard', async (req, res) => {
     };
     console.log('Page info:', pageInfo);
     
+    // Debug: Save a sample of the HTML to see what we're working with
+    const firstTable = $('table').first();
+    const sampleHTML = firstTable.html();
+    console.log('Sample table HTML (first 500 chars):', sampleHTML ? sampleHTML.substring(0, 500) : 'No tables found');
+    
+    // Debug: Check what tables we found
+    console.log('Total tables found:', $('table').length);
+    $('table').each((idx, table) => {
+      const $table = $(table);
+      const headerText = $table.find('th, thead tr, tr:first-child').text().toLowerCase();
+      const firstRowCells = $table.find('tr').first().find('th, td').length;
+      console.log(`Table ${idx}: header contains "odds": ${headerText.includes('odds')}, "player": ${headerText.includes('player')}, cells in first row: ${firstRowCells}`);
+    });
+    
     // Extract data using cheerio (same logic as before, but adapted for cheerio)
     const extractData = () => {
       const players = [];
@@ -178,6 +192,8 @@ app.get('/api/leaderboard', async (req, res) => {
         const $table = $(oddsTable);
         const rows = $table.find('tbody tr, tr').not(':first-child'); // Skip header row
         
+        console.log(`Found odds table with ${rows.length} rows`);
+        
         rows.each((rowIndex, row) => {
           const $row = $(row);
           const cells = $row.find('td');
@@ -192,6 +208,17 @@ app.get('/api/leaderboard', async (req, res) => {
             
             // Player name (cell 1) - extract from nested elements
             const nameCell = cells.eq(1);
+            const nameCellHTML = nameCell.html();
+            const nameCellText = cleanText(nameCell.text());
+            
+            // Debug first few rows
+            if (rowIndex < 5) {
+              console.log(`\n=== Row ${rowIndex} Debug ===`);
+              console.log(`Cell 1 HTML (first 300 chars):`, nameCellHTML ? nameCellHTML.substring(0, 300) : 'empty');
+              console.log(`Cell 1 full text:`, nameCellText);
+              console.log(`Cell 1 text length:`, nameCellText.length);
+            }
+            
             let name = '';
             
             // Try to find text that looks like a player name (First Last format)
@@ -205,15 +232,24 @@ app.get('/api/leaderboard', async (req, res) => {
                   !text.toLowerCase().includes('favorite') &&
                   !text.match(/^(USA|KOR|JPN|ENG|CAN|FIJ|SCO|COL|AUS|BEL|FRA|NOR|PHI|ARG|IRL|RSA|SWE|MEX|PUR|CHN|GER)$/)) {
                 allTexts.push(text);
+                if (rowIndex < 5) {
+                  console.log(`  Found potential name in nested element: "${text}"`);
+                }
               }
             });
             
             // Get the longest matching text (likely the full name)
             if (allTexts.length > 0) {
               name = allTexts.sort((a, b) => b.length - a.length)[0];
+              if (rowIndex < 5) {
+                console.log(`  Selected name from nested elements: "${name}"`);
+              }
             } else {
               // Fallback: get all text and clean it
               name = cleanText(nameCell.text());
+              if (rowIndex < 5) {
+                console.log(`  No nested name found, using full cell text: "${name}"`);
+              }
               // Remove country codes, "Favorite", and other noise
               name = name.replace(/\b(USA|KOR|JPN|ENG|CAN|FIJ|SCO|COL|AUS|BEL|FRA|NOR|PHI|ARG|IRL|RSA|SWE|MEX|PUR|CHN|GER|Favorite|Create|Account|Sign|Up|In|Quick|Links|Weather|Your|Opt|Out|Preference|Signal|Honored|Switch|Label|Search|Icon|Filter|Apply|Cancel|Consent|Leg|Interest|Reject|All|Confirm|My|Choices|Aon|Better|Decisions)\b/gi, '').trim();
               // Extract just the name part (should be 2-3 words)
@@ -224,6 +260,9 @@ app.get('/api/leaderboard', async (req, res) => {
               );
               if (nameParts.length >= 2) {
                 name = nameParts.slice(0, 3).join(' '); // Take first 2-3 words
+                if (rowIndex < 5) {
+                  console.log(`  After filtering, extracted: "${name}"`);
+                }
               }
             }
             
@@ -251,11 +290,11 @@ app.get('/api/leaderboard', async (req, res) => {
             }
             
             // Validate and add player - must match player name pattern
-            if (name && 
-                name.match(/^[A-Z][a-z]+ [A-Z][a-z]+/) && // Must be First Last format
-                name.length > 5 && 
-                name.length <= 40 &&
-                !isExcludedText(name) &&
+            const hasName = !!name;
+            const matchesPattern = name && name.match(/^[A-Z][a-z]+ [A-Z][a-z]+/);
+            const validLength = name && name.length > 5 && name.length <= 40;
+            const notExcluded = name && !isExcludedText(name);
+            const notNavigation = name && 
                 !name.toLowerCase().includes('advertisement') &&
                 !name.toLowerCase().includes('create') &&
                 !name.toLowerCase().includes('account') &&
@@ -271,16 +310,36 @@ app.get('/api/leaderboard', async (req, res) => {
                 !name.toLowerCase().includes('reject') &&
                 !name.toLowerCase().includes('confirm') &&
                 !name.toLowerCase().includes('choices') &&
-                !name.toLowerCase().includes('aon')) {
+                !name.toLowerCase().includes('aon');
+            
+            const isValidName = hasName && matchesPattern && validLength && notExcluded && notNavigation;
+            
+            if (rowIndex < 5) {
+              console.log(`  Validation: hasName=${hasName}, matchesPattern=${matchesPattern}, validLength=${validLength}, notExcluded=${notExcluded}, notNavigation=${notNavigation}`);
+              console.log(`  Final decision: ${isValidName ? 'ACCEPTED' : 'REJECTED'}`);
+            }
+            
+            if (isValidName) {
               players.push({
                 position: position,
                 name: name,
                 odds: odds,
                 score: score
               });
+            } else if (rowIndex < 5) {
+              console.log(`  REJECTED name: "${name}"`);
             }
           }
         });
+        
+        console.log(`\n=== Extraction Complete ===`);
+        console.log(`Total players extracted: ${players.length}`);
+        if (players.length > 0) {
+          console.log(`First 3 players:`, players.slice(0, 3).map(p => p.name));
+        }
+      } else {
+        console.log('ERROR: Could not find odds table!');
+        console.log('Available tables:', $('table').length);
       }
       
       // Strategy 2: Look for list items or divs with player data (even if we found some players, try to get odds)
