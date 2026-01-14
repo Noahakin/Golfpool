@@ -2,10 +2,10 @@ services:
   - type: web
     name: golfpool-backend
     env: node
-    buildCommand: npm install
+    buildCommand: PUPPETEER_SKIP_DOWNLOAD=true npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
+      - key: PUPPETEER_SKIP_DOWNLOAD
+        value: "true"

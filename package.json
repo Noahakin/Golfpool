@@ -8,6 +8,9 @@
     "dev": "node server.js",
     "postinstall": "node -e \"console.log('Install complete')\""
   },
+  "puppeteer": {
+    "skipDownload": true
+  },
   "keywords": [
     "pga",
     "golf",
