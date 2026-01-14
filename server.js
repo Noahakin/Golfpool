@@ -48,7 +48,8 @@ app.get('/api/leaderboard', async (req, res) => {
     }
     
     // Use HTTPS for ScraperAPI
-    const scraperApiUrl = `https://api.scraperapi.com?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&render=true`;
+    // Add wait parameter to ensure JavaScript renders (wait up to 5 seconds)
+    const scraperApiUrl = `https://api.scraperapi.com?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&render=true&wait=5000`;
     
     console.log('ScraperAPI URL (key hidden):', scraperApiUrl.replace(apiKey, '***'));
     console.log('API Key length:', apiKey.length);
