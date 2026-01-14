@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
+const fs = require('fs');
 const path = require('path');
 
 const app = express();
@@ -43,8 +44,35 @@ app.get('/api/leaderboard', async (req, res) => {
     console.log(`[${new Date().toLocaleTimeString()}] Starting request...`);
     console.log('Launching browser...');
     
-    // Use system Chromium if available (Render), otherwise use Puppeteer's Chrome
-    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+    // Find Chromium executable path
+    let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    
+    if (!executablePath) {
+      // Try common Chromium paths
+      const fs = require('fs');
+      const possiblePaths = [
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable'
+      ];
+      
+      for (const chromPath of possiblePaths) {
+        try {
+          if (fs.existsSync(chromPath)) {
+            executablePath = chromPath;
+            console.log(`Found Chromium at: ${executablePath}`);
+            break;
+          }
+        } catch (e) {
+          // Try next path
+        }
+      }
+    }
+    
+    if (!executablePath) {
+      throw new Error('Chromium not found. Please install chromium or set PUPPETEER_EXECUTABLE_PATH');
+    }
     
     const browserPromise = puppeteer.launch({
       headless: "new",
