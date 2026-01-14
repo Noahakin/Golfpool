@@ -7,5 +7,5 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: SCRAPERAPI_KEY
+      - key: ODDS_API_KEY
         sync: false

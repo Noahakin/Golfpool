@@ -1,8 +1,8 @@
 // API URL - automatically detects if running locally or on a deployed site
 const RENDER_URL = 'https://golfpool-1.onrender.com'; // Render backend URL
 const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? '/api/leaderboard'  // Local development
-    : `${RENDER_URL}/api/leaderboard`;  // Production - uses Render backend
+    ? '/api/odds'  // Local development - uses The Odds API
+    : `${RENDER_URL}/api/odds`;  // Production - uses The Odds API
 
 // Global state
 let allPlayersData = null;
@@ -391,7 +391,26 @@ function parseOdds(oddsStr) {
 }
 
 // Function to group players into tiers
+// If players already have tiers from API, use those; otherwise calculate tiers
 function groupPlayersIntoTiers(players) {
+    // Check if players already have tiers assigned (from The Odds API)
+    const hasTiers = players.some(p => p.tier !== undefined && p.tier !== null);
+    
+    if (hasTiers) {
+        // Use tiers from API - group by tier number
+        const tiers = [[], [], [], [], [], []];
+        players.forEach(player => {
+            const tierNum = player.tier || 6;
+            const tierIndex = Math.min(Math.max(0, tierNum - 1), 5); // Ensure 1-6 maps to 0-5
+            tiers[tierIndex].push({
+                ...player,
+                oddsValue: parseOdds(player.odds)
+            });
+        });
+        return tiers;
+    }
+    
+    // Fallback: Calculate tiers from odds (old logic)
     // Filter out players without valid odds and sort by odds (lowest = most likely to win)
     const playersWithOdds = players
         .filter(p => p.odds && p.odds !== 'N/A' && p.odds !== '')
@@ -405,35 +424,18 @@ function groupPlayersIntoTiers(players) {
     
     const total = playersWithOdds.length;
     
-    // Define tier distribution (fewer in tier 1, more in tier 6)
-    // Tier 1: top 5%, Tier 2: next 10%, Tier 3: next 15%, Tier 4: next 20%, Tier 5: next 25%, Tier 6: remaining 25%
-    const tierPercentages = [0.05, 0.10, 0.15, 0.20, 0.25, 0.25];
+    // Define tier distribution (evenly distributed across 6 tiers)
+    const tierSize = Math.ceil(total / 6);
     const tiers = [[], [], [], [], [], []];
     
-    let currentIndex = 0;
-    
-    tierPercentages.forEach((percentage, tierIndex) => {
-        const tierSize = Math.max(1, Math.floor(total * percentage)); // At least 1 player per tier
-        const endIndex = Math.min(currentIndex + tierSize, total);
-        
-        for (let i = currentIndex; i < endIndex; i++) {
-            tiers[tierIndex].push({
-                ...playersWithOdds[i],
-                tier: tierIndex + 1
-            });
-        }
-        
-        currentIndex = endIndex;
-    });
-    
-    // Add any remaining players to tier 6
-    while (currentIndex < total) {
-        tiers[5].push({
-            ...playersWithOdds[currentIndex],
-            tier: 6
+    playersWithOdds.forEach((player, index) => {
+        const tierNum = Math.min(Math.floor(index / tierSize) + 1, 6);
+        const tierIndex = tierNum - 1;
+        tiers[tierIndex].push({
+            ...player,
+            tier: tierNum
         });
-        currentIndex++;
-    }
+    });
     
     // Add players without odds to tier 6
     playersWithoutOdds.forEach(player => {

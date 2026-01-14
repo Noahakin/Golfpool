@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const cheerio = require('cheerio');
+const fs = require('fs');
 const path = require('path');
 
 const app = express();
@@ -10,6 +10,12 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
+
+// Storage directory for odds snapshots
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
 // Route to serve the main page
 app.get('/', (req, res) => {
@@ -29,521 +35,317 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-// API endpoint to fetch leaderboard and odds
-app.get('/api/leaderboard', async (req, res) => {
+// Convert American odds to implied probability
+function convertAmericanOddsToProbability(americanOdds) {
+  const odds = parseFloat(americanOdds);
+  if (isNaN(odds)) return null;
+  
+  if (odds > 0) {
+    // Positive odds: +500 means bet $100 to win $500
+    // Probability = 100 / (odds + 100)
+    return 100 / (odds + 100);
+  } else {
+    // Negative odds: -150 means bet $150 to win $100
+    // Probability = |odds| / (|odds| + 100)
+    return Math.abs(odds) / (Math.abs(odds) + 100);
+  }
+}
+
+// Convert probability back to American odds format for display
+function probabilityToAmericanOdds(probability) {
+  if (probability <= 0 || probability >= 1) return 'N/A';
+  
+  const decimalOdds = 1 / probability;
+  if (decimalOdds >= 2) {
+    // Positive American odds
+    return `+${Math.round((decimalOdds - 1) * 100)}`;
+  } else {
+    // Negative American odds
+    return Math.round(-100 / (decimalOdds - 1)).toString();
+  }
+}
+
+// Assign players to 6 tiers based on implied probability
+function assignTiers(players) {
+  if (players.length === 0) return players;
+  
+  // Sort by probability (highest first = favorite)
+  const sorted = [...players].sort((a, b) => b.probability - a.probability);
+  
+  // Calculate tier sizes (evenly distributed)
+  const totalPlayers = sorted.length;
+  const tierSize = Math.ceil(totalPlayers / 6);
+  
+  // Assign tiers
+  sorted.forEach((player, index) => {
+    const tierNumber = Math.min(Math.floor(index / tierSize) + 1, 6);
+    player.tier = tierNumber;
+  });
+  
+  return sorted;
+}
+
+// Save odds snapshot to file
+function saveOddsSnapshot(tournament, players) {
+  const snapshot = {
+    tournament,
+    players,
+    timestamp: new Date().toISOString(),
+    week: getWeekNumber(new Date())
+  };
+  
+  const filename = `odds-${tournament.toLowerCase().replace(/\s+/g, '-')}-${snapshot.week}.json`;
+  const filepath = path.join(DATA_DIR, filename);
+  
+  fs.writeFileSync(filepath, JSON.stringify(snapshot, null, 2));
+  console.log(`Saved odds snapshot to ${filename}`);
+  
+  return snapshot;
+}
+
+// Get odds snapshot from file
+function getOddsSnapshot(tournament) {
   try {
-    const targetUrl = req.query.url || 'https://www.pgatour.com/tournaments/2026/sony-open-in-hawaii/R2026006/odds';
-    
-    console.log(`[${new Date().toLocaleTimeString()}] Starting request...`);
-    console.log('Fetching page via ScraperAPI...');
-    
-    // ScraperAPI endpoint - replace YOUR_API_KEY with your actual key (or use env variable)
-    // Free tier: 1,000 requests/month
-    // Sign up at: https://www.scraperapi.com/
-    const apiKey = process.env.SCRAPERAPI_KEY || 'YOUR_API_KEY_HERE';
-    
-    // Check if API key is set
-    if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
-      throw new Error('ScraperAPI key not configured. Please set SCRAPERAPI_KEY environment variable in Render. See SCRAPERAPI_SETUP.md for instructions.');
+    if (!fs.existsSync(DATA_DIR)) {
+      return null;
     }
     
-    // Use HTTPS for ScraperAPI
-    // Add wait parameter to ensure JavaScript renders (wait up to 5 seconds)
-    const scraperApiUrl = `https://api.scraperapi.com?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&render=true&wait=5000`;
+    const files = fs.readdirSync(DATA_DIR).filter(f => f.startsWith('odds-') && f.endsWith('.json'));
     
-    console.log('ScraperAPI URL (key hidden):', scraperApiUrl.replace(apiKey, '***'));
-    console.log('API Key length:', apiKey.length);
+    // Find most recent snapshot for this tournament
+    const tournamentFiles = files.filter(f => 
+      f.toLowerCase().includes(tournament.toLowerCase().replace(/\s+/g, '-'))
+    );
     
-    // Fetch HTML using ScraperAPI
-    let response;
-    try {
-      response = await axios.get(scraperApiUrl, {
-        timeout: 30000, // 30 second timeout
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        validateStatus: function (status) {
-          return status < 500; // Don't throw on 4xx errors, we'll handle them
-        }
+    if (tournamentFiles.length === 0) return null;
+    
+    // Get most recent file
+    const latestFile = tournamentFiles.sort().reverse()[0];
+    const filepath = path.join(DATA_DIR, latestFile);
+    const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+    
+    return data;
+  } catch (error) {
+    console.error('Error reading odds snapshot:', error.message);
+    return null;
+  }
+}
+
+// Get week number (for weekly snapshots)
+function getWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+// API endpoint to fetch odds from The Odds API
+app.get('/api/odds', async (req, res) => {
+  try {
+    const apiKey = process.env.ODDS_API_KEY;
+    
+    if (!apiKey) {
+      return res.status(500).json({
+        error: 'ODDS_API_KEY not configured',
+        message: 'Please set ODDS_API_KEY environment variable. Get a free key at https://the-odds-api.com/'
       });
-      
-      // Check for 401 or other auth errors
-      if (response.status === 401) {
-        console.error('ScraperAPI returned 401 - Authentication failed');
-        console.error('Response:', response.data);
-        throw new Error('ScraperAPI authentication failed (401). Please verify your API key is correct and active in your ScraperAPI dashboard.');
-      }
-      
-      if (response.status !== 200) {
-        console.error(`ScraperAPI returned status ${response.status}`);
-        console.error('Response:', response.data);
-        throw new Error(`ScraperAPI returned status ${response.status}: ${JSON.stringify(response.data)}`);
-      }
-      
-    } catch (axiosError) {
-      if (axiosError.response) {
-        // Response was received but status code is not 2xx
-        if (axiosError.response.status === 401) {
-          throw new Error('ScraperAPI authentication failed (401). Please check your SCRAPERAPI_KEY in Render environment variables. Verify the key is correct at https://www.scraperapi.com/dashboard');
-        }
-        throw new Error(`ScraperAPI error: ${axiosError.response.status} - ${JSON.stringify(axiosError.response.data)}`);
-      } else if (axiosError.request) {
-        // Request was made but no response received
-        throw new Error('ScraperAPI request failed - no response received. Check your internet connection.');
-      } else {
-        // Error setting up the request
-        throw new Error(`ScraperAPI request setup failed: ${axiosError.message}`);
-      }
     }
     
-    console.log('Page fetched successfully');
-    console.log('Parsing HTML...');
+    const tournament = req.query.tournament || 'Sony Open in Hawaii';
     
-    // Debug: Check raw HTML first
-    const rawHTML = response.data;
-    console.log('Raw HTML length:', rawHTML ? rawHTML.length : 0);
-    console.log('Raw HTML (first 1000 chars):', rawHTML ? rawHTML.substring(0, 1000) : 'No HTML');
+    // Check if we have a recent snapshot (same week)
+    const currentWeek = getWeekNumber(new Date());
+    const snapshot = getOddsSnapshot(tournament);
     
-    // Load HTML into cheerio
-    const $ = cheerio.load(response.data);
+    if (snapshot && snapshot.week === currentWeek) {
+      console.log('Returning cached odds snapshot');
+      return res.json({
+        tournament: snapshot.tournament,
+        players: snapshot.players,
+        lastUpdated: snapshot.timestamp,
+        cached: true
+      });
+    }
     
-    // Debug: Log page info
-    const pageInfo = {
-      title: $('title').text(),
-      tables: $('table').length,
-      oddsElements: $('[class*="odds"], [class*="Odds"]').length,
-      divsWithOdds: $('div[class*="odds"], div[class*="Odds"]').length,
-      allDivs: $('div').length
+    // Fetch fresh odds from The Odds API
+    console.log('Fetching odds from The Odds API...');
+    
+    // The Odds API v4 endpoint for golf outrights
+    const oddsApiUrl = `https://api.the-odds-api.com/v4/sports/golf/odds`;
+    const params = {
+      regions: 'us',
+      markets: 'outrights',
+      oddsFormat: 'american',
+      apiKey: apiKey
     };
-    console.log('Page info:', pageInfo);
     
-    // Debug: Check for player-related elements
-    console.log('Elements with "player" in class:', $('[class*="player"], [class*="Player"]').length);
-    console.log('Elements with "betting" in class:', $('[class*="betting"], [class*="Betting"]').length);
-    
-    // Debug: Look for any structured data
-    const bodyText = $('body').text();
-    console.log('Body text (first 500 chars):', bodyText ? bodyText.substring(0, 500) : 'No body text');
-    
-    // Debug: Check if there are any rows or list items that might contain player data
-    console.log('Total <tr> elements:', $('tr').length);
-    console.log('Total <li> elements:', $('li').length);
-    console.log('Total <div> elements:', $('div').length);
-    
-    // Debug: Save a sample of the HTML to see what we're working with
-    const firstTable = $('table').first();
-    const sampleHTML = firstTable.html();
-    console.log('Sample table HTML (first 500 chars):', sampleHTML ? sampleHTML.substring(0, 500) : 'No tables found');
-    
-    // Debug: Check what tables we found
-    console.log('Total tables found:', $('table').length);
-    $('table').each((idx, table) => {
-      const $table = $(table);
-      const headerText = $table.find('th, thead tr, tr:first-child').text().toLowerCase();
-      const firstRowCells = $table.find('tr').first().find('th, td').length;
-      console.log(`Table ${idx}: header contains "odds": ${headerText.includes('odds')}, "player": ${headerText.includes('player')}, cells in first row: ${firstRowCells}`);
+    const response = await axios.get(oddsApiUrl, {
+      params: params,
+      timeout: 30000
     });
     
-    // Extract data using cheerio (same logic as before, but adapted for cheerio)
-    const extractData = () => {
-      const players = [];
-      
-      // Function to clean text
-      const cleanText = (text) => {
-        if (!text) return '';
-        return text.replace(/\s+/g, ' ').trim();
-      };
-      
-      // Function to detect if text looks like odds
-      const isOdds = (text) => {
-        if (!text) return false;
-        // Match patterns like: +500, -150, +1200, 5/1, 10/1, 15/2, etc.
-        return /^[+-]\d+$/.test(text) ||           // +500, -150
-               /^\d+\/\d+$/.test(text) ||          // 5/1, 10/1
-               /^\d+\.\d+$/.test(text) ||          // 5.5, 10.0
-               (text.includes('+') && /\+?\d+/.test(text)) ||  // +500
-               (text.includes('-') && /-?\d+/.test(text));      // -150
-      };
-      
-      // List of common navigation/menu items to exclude
-      const excludePatterns = [
-        'signature events', 'how it works', 'groupings official', 'waialae country club',
-        'how to watch', 'marketing partners', 'payne stewart award', 'fan council',
-        'social responsibility', 'fan shop', 'mastercard tickets', 'tournament', 'leaderboard',
-        'odds', 'schedule', 'players', 'news', 'video', 'shop', 'tickets', 'mobile app',
-        'follow us', 'about', 'contact', 'privacy', 'terms', 'cookie', 'accessibility'
-      ];
-      
-      const isExcludedText = (text) => {
-        const lowerText = text.toLowerCase();
-        return excludePatterns.some(pattern => lowerText.includes(pattern)) ||
-               lowerText.length < 3 ||
-               lowerText.length > 50; // Player names are usually 3-50 chars
-      };
-      
-      // Strategy 1: Target the specific odds table structure
-      // Find the table that has "Odds" in its header or contains odds data
-      const allTables = $('table');
-      let oddsTable = null;
-      
-      console.log('Looking for odds table...');
-      console.log('Total tables found:', allTables.length);
-      
-      // Find the table with "Odds" column header
-      allTables.each((idx, table) => {
-        const $table = $(table);
-        const headerText = $table.find('th, thead tr, tr:first-child').text().toLowerCase();
-        console.log(`Checking table ${idx}: header text (first 200 chars):`, headerText.substring(0, 200));
-        if (headerText.includes('odds') && headerText.includes('player')) {
-          oddsTable = $table;
-          console.log(`Found odds table at index ${idx}`);
-          return false; // break
-        }
+    if (!response.data || response.data.length === 0) {
+      return res.status(404).json({
+        error: 'No odds data available',
+        message: 'No golf tournaments with odds found. The tournament may not have odds available yet.'
       });
-      
-      // If not found, try the first table with 6+ columns
-      if (!oddsTable) {
-        console.log('No table with "odds" and "player" found, trying tables with 6+ columns...');
-        allTables.each((idx, table) => {
-          const $table = $(table);
-          const firstRow = $table.find('tr').first();
-          const cells = firstRow.find('th, td');
-          console.log(`Table ${idx} has ${cells.length} cells in first row`);
-          if (cells.length >= 6) {
-            oddsTable = $table;
-            console.log(`Using table ${idx} with ${cells.length} columns`);
-            return false; // break
-          }
-        });
-      }
-      
-      // If still no table, try to find div-based structure
-      if (!oddsTable) {
-        console.log('No suitable table found, checking for div-based structure...');
-        // Look for divs that might contain the odds data
-        const oddsContainers = $('div[class*="odds"], div[class*="player"], div[class*="betting"]');
-        console.log('Found divs with odds/player/betting classes:', oddsContainers.length);
-      }
-      
-      if (oddsTable) {
-        const $table = $(oddsTable);
-        const rows = $table.find('tbody tr, tr').not(':first-child'); // Skip header row
-        
-        console.log(`Found odds table with ${rows.length} rows`);
-        
-        rows.each((rowIndex, row) => {
-          const $row = $(row);
-          const cells = $row.find('td');
-          
-          // Need at least 6 cells for the odds table structure
-          if (cells.length >= 6) {
-            // Position (cell 0)
-            let position = cleanText(cells.eq(0).text());
-            if (!position || position === '-' || position === '') {
-              position = (players.length + 1).toString();
-            }
-            
-            // Player name (cell 1) - extract from nested elements
-            const nameCell = cells.eq(1);
-            const nameCellHTML = nameCell.html();
-            const nameCellText = cleanText(nameCell.text());
-            
-            // Debug first few rows
-            if (rowIndex < 5) {
-              console.log(`\n=== Row ${rowIndex} Debug ===`);
-              console.log(`Cell 1 HTML (first 300 chars):`, nameCellHTML ? nameCellHTML.substring(0, 300) : 'empty');
-              console.log(`Cell 1 full text:`, nameCellText);
-              console.log(`Cell 1 text length:`, nameCellText.length);
-            }
-            
-            let name = '';
-            
-            // Try to find text that looks like a player name (First Last format)
-            // Look in all nested elements
-            const allTexts = [];
-            nameCell.find('*').each((idx, el) => {
-              const text = cleanText($(el).text());
-              // Check if it matches player name pattern (2-3 words, capitalized)
-              if (text.match(/^[A-Z][a-z]+ [A-Z][a-z]+/) && 
-                  text.length > 5 && text.length < 40 &&
-                  !text.toLowerCase().includes('favorite') &&
-                  !text.match(/^(USA|KOR|JPN|ENG|CAN|FIJ|SCO|COL|AUS|BEL|FRA|NOR|PHI|ARG|IRL|RSA|SWE|MEX|PUR|CHN|GER)$/)) {
-                allTexts.push(text);
-                if (rowIndex < 5) {
-                  console.log(`  Found potential name in nested element: "${text}"`);
-                }
-              }
-            });
-            
-            // Get the longest matching text (likely the full name)
-            if (allTexts.length > 0) {
-              name = allTexts.sort((a, b) => b.length - a.length)[0];
-              if (rowIndex < 5) {
-                console.log(`  Selected name from nested elements: "${name}"`);
-              }
-            } else {
-              // Fallback: get all text and clean it
-              name = cleanText(nameCell.text());
-              if (rowIndex < 5) {
-                console.log(`  No nested name found, using full cell text: "${name}"`);
-              }
-              // Remove country codes, "Favorite", and other noise
-              name = name.replace(/\b(USA|KOR|JPN|ENG|CAN|FIJ|SCO|COL|AUS|BEL|FRA|NOR|PHI|ARG|IRL|RSA|SWE|MEX|PUR|CHN|GER|Favorite|Create|Account|Sign|Up|In|Quick|Links|Weather|Your|Opt|Out|Preference|Signal|Honored|Switch|Label|Search|Icon|Filter|Apply|Cancel|Consent|Leg|Interest|Reject|All|Confirm|My|Choices|Aon|Better|Decisions)\b/gi, '').trim();
-              // Extract just the name part (should be 2-3 words)
-              const nameParts = name.split(/\s+/).filter(part => 
-                part.length > 1 && 
-                !part.match(/^[A-Z]{2,3}$/) && // Not country codes
-                part.match(/^[A-Z][a-z]+$/) // Proper capitalization
-              );
-              if (nameParts.length >= 2) {
-                name = nameParts.slice(0, 3).join(' '); // Take first 2-3 words
-                if (rowIndex < 5) {
-                  console.log(`  After filtering, extracted: "${name}"`);
-                }
-              }
-            }
-            
-            // Score (cell 2) - Total
-            const score = cleanText(cells.eq(2).text()) || '-';
-            
-            // Odds (cell 5) - get button text
-            const oddsCell = cells.eq(5);
-            const oddsButton = oddsCell.find('button');
-            let odds = 'N/A';
-            
-            if (oddsButton.length > 0) {
-              let oddsText = cleanText(oddsButton.text());
-              // Remove "Up" or "Down" prefixes
-              oddsText = oddsText.replace(/^(Up|Down)\s*/i, '').trim();
-              if (isOdds(oddsText)) {
-                odds = oddsText;
-              }
-            } else {
-              // Fallback: check cell text
-              const oddsText = cleanText(oddsCell.text());
-              if (isOdds(oddsText)) {
-                odds = oddsText.replace(/^(Up|Down)\s*/i, '').trim();
-              }
-            }
-            
-            // Validate and add player - must match player name pattern
-            const hasName = !!name;
-            const matchesPattern = name && name.match(/^[A-Z][a-z]+ [A-Z][a-z]+/);
-            const validLength = name && name.length > 5 && name.length <= 40;
-            const notExcluded = name && !isExcludedText(name);
-            const notNavigation = name && 
-                !name.toLowerCase().includes('advertisement') &&
-                !name.toLowerCase().includes('create') &&
-                !name.toLowerCase().includes('account') &&
-                !name.toLowerCase().includes('sign') &&
-                !name.toLowerCase().includes('quick') &&
-                !name.toLowerCase().includes('links') &&
-                !name.toLowerCase().includes('weather') &&
-                !name.toLowerCase().includes('search') &&
-                !name.toLowerCase().includes('filter') &&
-                !name.toLowerCase().includes('apply') &&
-                !name.toLowerCase().includes('cancel') &&
-                !name.toLowerCase().includes('consent') &&
-                !name.toLowerCase().includes('reject') &&
-                !name.toLowerCase().includes('confirm') &&
-                !name.toLowerCase().includes('choices') &&
-                !name.toLowerCase().includes('aon');
-            
-            const isValidName = hasName && matchesPattern && validLength && notExcluded && notNavigation;
-            
-            if (rowIndex < 5) {
-              console.log(`  Validation: hasName=${hasName}, matchesPattern=${matchesPattern}, validLength=${validLength}, notExcluded=${notExcluded}, notNavigation=${notNavigation}`);
-              console.log(`  Final decision: ${isValidName ? 'ACCEPTED' : 'REJECTED'}`);
-            }
-            
-            if (isValidName) {
-              players.push({
-                position: position,
-                name: name,
-                odds: odds,
-                score: score
-              });
-            } else if (rowIndex < 5) {
-              console.log(`  REJECTED name: "${name}"`);
-            }
-          }
-        });
-        
-        console.log(`\n=== Extraction Complete ===`);
-        console.log(`Total players extracted: ${players.length}`);
-        if (players.length > 0) {
-          console.log(`First 3 players:`, players.slice(0, 3).map(p => p.name));
-        }
-      } else {
-        console.log('ERROR: Could not find odds table!');
-        console.log('Available tables:', $('table').length);
-      }
-      
-      // Strategy 2: Look for list items or divs with player data (even if we found some players, try to get odds)
-      const playerContainers = $(
-        '[class*="player"], [class*="Player"], [data-testid*="player"], ' +
-        '[class*="odds-row"], [class*="betting-row"], li[class*="player"], ' +
-        '[class*="betting"], [class*="Betting"]'
-      );
-      
-      // If we have players but missing odds, try to match them
-      if (players.length > 0 && players.some(p => !p.odds || p.odds === 'N/A' || p.odds === '')) {
-        playerContainers.each((idx, container) => {
-          const $container = $(container);
-          const nameEl = $container.find('[class*="name"], [class*="Name"], strong, h3, h4, a').first();
-          const oddsEl = $container.find('[class*="odds"], [class*="Odds"], [class*="betting"], [class*="Betting"], [data-odds]').first();
-          
-          if (nameEl.length > 0) {
-            const name = cleanText(nameEl.text());
-            // Find matching player and update odds
-            const player = players.find(p => p.name && p.name.toLowerCase().includes(name.toLowerCase().substring(0, 10)));
-            if (player && (!player.odds || player.odds === 'N/A' || player.odds === '')) {
-              if (oddsEl.length > 0) {
-                const oddsText = cleanText(oddsEl.text());
-                if (isOdds(oddsText)) {
-                  player.odds = oddsText;
-                }
-              }
-              // Also check data attributes
-              const dataOdds = $container.attr('data-odds') || oddsEl.attr('data-odds');
-              if (dataOdds && isOdds(dataOdds)) {
-                player.odds = dataOdds;
-              }
-            }
-          }
-        });
-      }
-      
-      // If no players found yet, try this strategy
-      if (players.length === 0) {
-        playerContainers.each((index, container) => {
-          const $container = $(container);
-          const nameEl = $container.find('[class*="name"], [class*="Name"], strong, h3, h4, a').first();
-          const oddsEl = $container.find('[class*="odds"], [class*="Odds"], [class*="betting"], [class*="Betting"], [data-odds]').first();
-          
-          if (nameEl.length > 0) {
-            const name = cleanText(nameEl.text());
-            let odds = 'N/A';
-            
-            if (oddsEl.length > 0) {
-              const oddsText = cleanText(oddsEl.text());
-              if (isOdds(oddsText)) {
-                odds = oddsText;
-              }
-            }
-            
-            // Check data attributes
-            const dataOdds = $container.attr('data-odds') || oddsEl.attr('data-odds');
-            if (dataOdds && isOdds(dataOdds)) {
-              odds = dataOdds;
-            }
-            
-            if (name && name.length > 1 && !isExcludedText(name)) {
-              players.push({
-                position: (index + 1).toString(),
-                name: name,
-                odds: odds,
-                score: ''
-              });
-            }
-          }
-        });
-      }
-      
-      // Strategy 3: Look for any structured data with player names
-      if (players.length === 0) {
-        // Try to find all text that might be player names
-        const allElements = $('div, span, p, li');
-        const potentialPlayers = [];
-        
-        allElements.each((idx, el) => {
-          const text = cleanText($(el).text());
-          // Look for text that might be a player name (2-4 words, capitalized)
-          // Must match pattern like "First Last" or "First Middle Last"
-          if (text.match(/^[A-Z][a-z]+ [A-Z][a-z]+/) && 
-              text.length > 5 && text.length < 50 &&
-              !isExcludedText(text) &&
-              !text.includes('Tournament') && !text.includes('Open') &&
-              !text.includes('Leaderboard') && !text.includes('Odds') &&
-              !text.includes('Signature') && !text.includes('How It Works') &&
-              !text.includes('Groupings') && !text.includes('Country Club') &&
-              !text.includes('Marketing') && !text.includes('Fan') &&
-              !text.includes('Shop') && !text.includes('Tickets')) {
-            potentialPlayers.push({
-              name: text,
-              element: el
-            });
-          }
-        });
-        
-        // Get unique player names
-        const uniqueNames = [...new Set(potentialPlayers.map(p => p.name))];
-        uniqueNames.slice(0, 50).forEach((name, idx) => {
-          const playerEl = potentialPlayers.find(p => p.name === name)?.element;
-          const $playerEl = $(playerEl);
-          const oddsEl = $playerEl.closest('div, tr, li').find('[class*="odds"], [class*="betting"]').first();
-          const odds = oddsEl.length > 0 ? cleanText(oddsEl.text()) : 'N/A';
-          
-          players.push({
-            position: (idx + 1).toString(),
-            name: name,
-            odds: odds,
-            score: ''
-          });
-        });
-      }
-      
-      // Get tournament name
-      const tournamentSelectors = [
-        'h1',
-        '[class*="tournament"]',
-        '[class*="Tournament"]',
-        '[class*="event"]',
-        '[class*="Event"]'
-      ];
-      
-      let tournamentName = 'Sony Open in Hawaii';
-      for (const selector of tournamentSelectors) {
-        const el = $(selector).first();
-        if (el.length > 0) {
-          const text = cleanText(el.text());
-          if (text && text.length > 5 && text.length < 100) {
-            tournamentName = text;
-            break;
-          }
-        }
-      }
-      
-      return {
-        tournament: tournamentName,
-        players: players.slice(0, 100), // Limit to 100 players
-        lastUpdated: new Date().toISOString()
-      };
-    };
-    
-    const data = extractData();
-    
-    console.log(`[${new Date().toLocaleTimeString()}] Found ${data.players.length} players`);
-    res.json(data);
-    
-  } catch (error) {
-    console.error(`[${new Date().toLocaleTimeString()}] Error fetching leaderboard:`, error.message);
-    
-    // Provide more specific error messages
-    let errorDetails = 'The page may be taking too long to load or the structure may have changed. Please try again.';
-    if (error.message.includes('ScraperAPI')) {
-      errorDetails = error.message + ' See SCRAPERAPI_SETUP.md for setup instructions.';
-    } else if (error.response && error.response.status === 401) {
-      errorDetails = 'ScraperAPI authentication failed. Please check your SCRAPERAPI_KEY in Render environment variables. Get a free key at https://www.scraperapi.com/';
     }
     
-    // Return error with helpful message
-    res.status(500).json({ 
-      error: 'Failed to fetch leaderboard data',
-      message: error.message,
-      details: errorDetails,
+    // Find the tournament (match by name or use first available)
+    let tournamentData = response.data.find(event => 
+      event.description && event.description.toLowerCase().includes(tournament.toLowerCase().split(' ')[0])
+    );
+    
+    if (!tournamentData && response.data.length > 0) {
+      // Use first available tournament if exact match not found
+      tournamentData = response.data[0];
+      console.log(`Using tournament: ${tournamentData.description || 'Unknown'}`);
+    }
+    
+    if (!tournamentData) {
+      return res.status(404).json({
+        error: 'Tournament not found',
+        message: `Could not find odds for "${tournament}". Available tournaments: ${response.data.map(e => e.description).join(', ')}`
+      });
+    }
+    
+    // Extract players and odds from bookmakers
+    const players = [];
+    const playerOddsMap = new Map();
+    
+    // Collect odds from all bookmakers
+    tournamentData.bookmakers?.forEach(bookmaker => {
+      bookmaker.markets?.forEach(market => {
+        if (market.key === 'outrights') {
+          market.outcomes?.forEach(outcome => {
+            const playerName = outcome.name;
+            const odds = outcome.price;
+            
+            if (!playerOddsMap.has(playerName)) {
+              playerOddsMap.set(playerName, []);
+            }
+            
+            // Store odds from this bookmaker
+            playerOddsMap.get(playerName).push({
+              bookmaker: bookmaker.title,
+              odds: odds,
+              probability: convertAmericanOddsToProbability(odds)
+            });
+          });
+        }
+      });
+    });
+    
+    // Convert to player array, using average probability across bookmakers
+    playerOddsMap.forEach((oddsData, playerName) => {
+      // Calculate average probability
+      const probabilities = oddsData.map(d => d.probability).filter(p => p !== null);
+      if (probabilities.length === 0) return;
+      
+      const avgProbability = probabilities.reduce((sum, p) => sum + p, 0) / probabilities.length;
+      
+      // Use the most common odds (or average) for display
+      const displayOdds = oddsData[0].odds; // Use first bookmaker's odds for display
+      
+      players.push({
+        name: playerName,
+        odds: displayOdds > 0 ? `+${displayOdds}` : displayOdds.toString(),
+        probability: avgProbability,
+        position: '', // Will be set by tier
+        score: '' // Scores come from separate endpoint
+      });
+    });
+    
+    // Assign tiers based on probability
+    const tieredPlayers = assignTiers(players);
+    
+    // Add position based on tier
+    tieredPlayers.forEach((player, index) => {
+      player.position = (index + 1).toString();
+    });
+    
+    // Save snapshot
+    const snapshot = saveOddsSnapshot(tournamentData.description || tournament, tieredPlayers);
+    
+    console.log(`Fetched ${tieredPlayers.length} players with odds`);
+    
+    res.json({
+      tournament: tournamentData.description || tournament,
+      players: tieredPlayers,
+      lastUpdated: snapshot.timestamp,
+      cached: false
+    });
+    
+  } catch (error) {
+    console.error('Error fetching odds:', error.message);
+    
+    if (error.response) {
+      return res.status(error.response.status).json({
+        error: 'Odds API error',
+        message: error.response.data?.message || error.message,
+        details: 'Check your ODDS_API_KEY and API quota'
+      });
+    }
+    
+    res.status(500).json({
+      error: 'Failed to fetch odds',
+      message: error.message
+    });
+  }
+});
+
+// API endpoint for leaderboard/scores (separate from odds)
+// This will use PGA Tour JSON endpoints for scores only
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    // TODO: Implement PGA Tour JSON API for scores
+    // For now, return empty scores - odds come from /api/odds
+    
+    res.json({
       tournament: 'Sony Open in Hawaii',
-      players: []
+      players: [],
+      lastUpdated: new Date().toISOString(),
+      message: 'Scores endpoint - to be implemented with PGA Tour JSON API'
+    });
+    
+  } catch (error) {
+    console.error('Error fetching leaderboard:', error.message);
+    res.status(500).json({
+      error: 'Failed to fetch leaderboard',
+      message: error.message
+    });
+  }
+});
+
+// Combined endpoint that merges odds and scores
+app.get('/api/combined', async (req, res) => {
+  try {
+    // Fetch odds
+    const oddsResponse = await axios.get(`${req.protocol}://${req.get('host')}/api/odds?tournament=${encodeURIComponent(req.query.tournament || 'Sony Open in Hawaii')}`);
+    const oddsData = oddsResponse.data;
+    
+    // Fetch scores (when implemented)
+    // const scoresResponse = await axios.get(`${req.protocol}://${req.get('host')}/api/leaderboard`);
+    // const scoresData = scoresResponse.data;
+    
+    // Merge odds with scores
+    const players = oddsData.players.map(player => ({
+      ...player,
+      // score: scoresData.players.find(p => p.name === player.name)?.score || ''
+    }));
+    
+    res.json({
+      tournament: oddsData.tournament,
+      players: players,
+      lastUpdated: oddsData.lastUpdated
+    });
+    
+  } catch (error) {
+    console.error('Error fetching combined data:', error.message);
+    res.status(500).json({
+      error: 'Failed to fetch combined data',
+      message: error.message
     });
   }
 });
