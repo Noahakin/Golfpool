@@ -1,20 +1,30 @@
 const puppeteer = require('puppeteer-core');
-const chromium = require('@sparticuz/chromium');
+let chromium;
 
-// Configure Chromium for serverless
-chromium.setGraphicsMode(false);
+// Only load chromium in serverless environment
+try {
+  chromium = require('@sparticuz/chromium');
+  chromium.setGraphicsMode(false);
+} catch (e) {
+  console.log('Chromium not available, using default puppeteer');
+}
 
 module.exports = async (req, res) => {
   console.log('Leaderboard endpoint called:', req.method, req.url, req.query);
   
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
+  try {
+    // Set CORS headers
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+      res.status(200).end();
+      return;
+    }
+  } catch (error) {
+    console.error('Error setting headers:', error);
+    return res.status(500).json({ error: 'Failed to process request', message: error.message });
   }
   
   let browser = null;
@@ -30,13 +40,26 @@ module.exports = async (req, res) => {
     console.log(`[${new Date().toLocaleTimeString()}] Starting request...`);
     console.log('Launching browser...');
     
-    const browserPromise = puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true,
-    });
+    let launchOptions;
+    
+    if (chromium) {
+      // Serverless environment (Vercel)
+      launchOptions = {
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+        ignoreHTTPSErrors: true,
+      };
+    } else {
+      // Local development
+      launchOptions = {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      };
+    }
+    
+    const browserPromise = puppeteer.launch(launchOptions);
     
     // Add timeout for browser launch
     browser = await Promise.race([
