@@ -1,0 +1,12 @@
+node_modules
+.git
+.env
+*.log
+.DS_Store
+api/
+vercel.json
+VERCEL_*.md
+DEPLOYMENT.md
+GITHUB_SETUP.md
+VERCEL_DEPLOY.md
+VERCEL_DEBUG.md
