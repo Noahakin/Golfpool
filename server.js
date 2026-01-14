@@ -207,14 +207,61 @@ app.get('/api/odds', async (req, res) => {
       });
       
       if (eventsResponse.data && eventsResponse.data.length > 0) {
-        // Find matching tournament
-        tournamentData = eventsResponse.data.find(event => 
-          event.description && event.description.toLowerCase().includes(tournament.toLowerCase().split(' ')[0])
-        );
+        const now = new Date();
+        const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
         
-        if (!tournamentData) {
-          tournamentData = eventsResponse.data[0];
-          console.log(`Using tournament: ${tournamentData.description || 'Unknown'}`);
+        // Filter to upcoming/current tournaments (within next 7 days)
+        const upcomingEvents = eventsResponse.data.filter(event => {
+          if (!event.commenceTime) return false;
+          const eventDate = new Date(event.commenceTime);
+          return eventDate >= now && eventDate <= oneWeekFromNow;
+        });
+        
+        console.log(`Found ${eventsResponse.data.length} total events, ${upcomingEvents.length} upcoming this week`);
+        console.log('Upcoming events:', upcomingEvents.map(e => `${e.description} (${e.commenceTime})`).join(', '));
+        
+        // First, try to find exact tournament name match in upcoming events
+        const tournamentLower = tournament.toLowerCase();
+        tournamentData = upcomingEvents.find(event => {
+          if (!event.description) return false;
+          const descLower = event.description.toLowerCase();
+          // Check for multiple keywords from tournament name
+          const keywords = tournamentLower.split(' ').filter(w => w.length > 2);
+          return keywords.some(keyword => descLower.includes(keyword));
+        });
+        
+        // If no exact match, use the most immediate upcoming tournament
+        if (!tournamentData && upcomingEvents.length > 0) {
+          // Sort by commence time (earliest first)
+          upcomingEvents.sort((a, b) => {
+            const dateA = new Date(a.commenceTime || 0);
+            const dateB = new Date(b.commenceTime || 0);
+            return dateA - dateB;
+          });
+          tournamentData = upcomingEvents[0];
+          console.log(`No exact match found, using most immediate tournament: ${tournamentData.description || 'Unknown'}`);
+        }
+        
+        // If still no tournament, try all events (not just upcoming)
+        if (!tournamentData && eventsResponse.data.length > 0) {
+          tournamentData = eventsResponse.data.find(event => {
+            if (!event.description) return false;
+            const descLower = event.description.toLowerCase();
+            const keywords = tournamentLower.split(' ').filter(w => w.length > 2);
+            return keywords.some(keyword => descLower.includes(keyword));
+          });
+          
+          if (!tournamentData) {
+            // Last resort: use first event
+            tournamentData = eventsResponse.data[0];
+            console.log(`Using first available tournament: ${tournamentData.description || 'Unknown'}`);
+          } else {
+            console.log(`Found tournament in all events: ${tournamentData.description || 'Unknown'}`);
+          }
+        }
+        
+        if (tournamentData) {
+          console.log(`Selected tournament: "${tournamentData.description}" (ID: ${tournamentData.id}, Date: ${tournamentData.commenceTime || 'unknown'})`);
         }
       }
     } catch (eventsError) {
@@ -256,15 +303,56 @@ app.get('/api/odds', async (req, res) => {
         });
       }
       
-      // Find the tournament (match by name or use first available)
-      tournamentData = response.data.find(event => 
-        event.description && event.description.toLowerCase().includes(tournament.toLowerCase().split(' ')[0])
-      );
+      // Filter to upcoming tournaments (within next 7 days)
+      const now = new Date();
+      const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
       
+      const upcomingEvents = response.data.filter(event => {
+        if (!event.commenceTime) return false;
+        const eventDate = new Date(event.commenceTime);
+        return eventDate >= now && eventDate <= oneWeekFromNow;
+      });
+      
+      console.log(`Direct odds endpoint: Found ${response.data.length} total events, ${upcomingEvents.length} upcoming this week`);
+      
+      // Find matching tournament in upcoming events first
+      const tournamentLower = tournament.toLowerCase();
+      tournamentData = upcomingEvents.find(event => {
+        if (!event.description) return false;
+        const descLower = event.description.toLowerCase();
+        const keywords = tournamentLower.split(' ').filter(w => w.length > 2);
+        return keywords.some(keyword => descLower.includes(keyword));
+      });
+      
+      // If no match in upcoming, try all events
+      if (!tournamentData) {
+        tournamentData = response.data.find(event => {
+          if (!event.description) return false;
+          const descLower = event.description.toLowerCase();
+          const keywords = tournamentLower.split(' ').filter(w => w.length > 2);
+          return keywords.some(keyword => descLower.includes(keyword));
+        });
+      }
+      
+      // If still no match, use most immediate upcoming tournament
+      if (!tournamentData && upcomingEvents.length > 0) {
+        upcomingEvents.sort((a, b) => {
+          const dateA = new Date(a.commenceTime || 0);
+          const dateB = new Date(b.commenceTime || 0);
+          return dateA - dateB;
+        });
+        tournamentData = upcomingEvents[0];
+        console.log(`Using most immediate upcoming tournament: ${tournamentData.description || 'Unknown'}`);
+      }
+      
+      // Last resort: use first available
       if (!tournamentData && response.data.length > 0) {
-        // Use first available tournament if exact match not found
         tournamentData = response.data[0];
-        console.log(`Using tournament: ${tournamentData.description || 'Unknown'}`);
+        console.log(`Using first available tournament: ${tournamentData.description || 'Unknown'}`);
+      }
+      
+      if (tournamentData) {
+        console.log(`Selected tournament from direct endpoint: "${tournamentData.description}" (Date: ${tournamentData.commenceTime || 'unknown'})`);
       }
     }
     
