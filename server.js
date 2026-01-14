@@ -41,15 +41,59 @@ app.get('/api/leaderboard', async (req, res) => {
     // Free tier: 1,000 requests/month
     // Sign up at: https://www.scraperapi.com/
     const apiKey = process.env.SCRAPERAPI_KEY || 'YOUR_API_KEY_HERE';
-    const scraperApiUrl = `http://api.scraperapi.com?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&render=true`;
+    
+    // Check if API key is set
+    if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') {
+      throw new Error('ScraperAPI key not configured. Please set SCRAPERAPI_KEY environment variable in Render. See SCRAPERAPI_SETUP.md for instructions.');
+    }
+    
+    // Use HTTPS for ScraperAPI
+    const scraperApiUrl = `https://api.scraperapi.com?api_key=${apiKey}&url=${encodeURIComponent(targetUrl)}&render=true`;
+    
+    console.log('ScraperAPI URL (key hidden):', scraperApiUrl.replace(apiKey, '***'));
+    console.log('API Key length:', apiKey.length);
     
     // Fetch HTML using ScraperAPI
-    const response = await axios.get(scraperApiUrl, {
-      timeout: 30000, // 30 second timeout
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    let response;
+    try {
+      response = await axios.get(scraperApiUrl, {
+        timeout: 30000, // 30 second timeout
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        validateStatus: function (status) {
+          return status < 500; // Don't throw on 4xx errors, we'll handle them
+        }
+      });
+      
+      // Check for 401 or other auth errors
+      if (response.status === 401) {
+        console.error('ScraperAPI returned 401 - Authentication failed');
+        console.error('Response:', response.data);
+        throw new Error('ScraperAPI authentication failed (401). Please verify your API key is correct and active in your ScraperAPI dashboard.');
       }
-    });
+      
+      if (response.status !== 200) {
+        console.error(`ScraperAPI returned status ${response.status}`);
+        console.error('Response:', response.data);
+        throw new Error(`ScraperAPI returned status ${response.status}: ${JSON.stringify(response.data)}`);
+      }
+      
+    } catch (axiosError) {
+      if (axiosError.response) {
+        // Response was received but status code is not 2xx
+        if (axiosError.response.status === 401) {
+          throw new Error('ScraperAPI authentication failed (401). Please check your SCRAPERAPI_KEY in Render environment variables. Verify the key is correct at https://www.scraperapi.com/dashboard');
+        }
+        throw new Error(`ScraperAPI error: ${axiosError.response.status} - ${JSON.stringify(axiosError.response.data)}`);
+      } else if (axiosError.request) {
+        // Request was made but no response received
+        throw new Error('ScraperAPI request failed - no response received. Check your internet connection.');
+      } else {
+        // Error setting up the request
+        throw new Error(`ScraperAPI request setup failed: ${axiosError.message}`);
+      }
+    }
     
     console.log('Page fetched successfully');
     console.log('Parsing HTML...');
@@ -345,11 +389,19 @@ app.get('/api/leaderboard', async (req, res) => {
   } catch (error) {
     console.error(`[${new Date().toLocaleTimeString()}] Error fetching leaderboard:`, error.message);
     
+    // Provide more specific error messages
+    let errorDetails = 'The page may be taking too long to load or the structure may have changed. Please try again.';
+    if (error.message.includes('ScraperAPI')) {
+      errorDetails = error.message + ' See SCRAPERAPI_SETUP.md for setup instructions.';
+    } else if (error.response && error.response.status === 401) {
+      errorDetails = 'ScraperAPI authentication failed. Please check your SCRAPERAPI_KEY in Render environment variables. Get a free key at https://www.scraperapi.com/';
+    }
+    
     // Return error with helpful message
     res.status(500).json({ 
       error: 'Failed to fetch leaderboard data',
       message: error.message,
-      details: 'The page may be taking too long to load or the structure may have changed. Please try again. If using ScraperAPI, make sure your API key is set correctly.',
+      details: errorDetails,
       tournament: 'Sony Open in Hawaii',
       players: []
     });
