@@ -146,22 +146,6 @@ app.get('/api/leaderboard', async (req, res) => {
                lowerText.length > 50; // Player names are usually 3-50 chars
       };
       
-      // List of common navigation/menu items to exclude
-      const excludePatterns = [
-        'signature events', 'how it works', 'groupings official', 'waialae country club',
-        'how to watch', 'marketing partners', 'payne stewart award', 'fan council',
-        'social responsibility', 'fan shop', 'mastercard tickets', 'tournament', 'leaderboard',
-        'odds', 'schedule', 'players', 'news', 'video', 'shop', 'tickets', 'mobile app',
-        'follow us', 'about', 'contact', 'privacy', 'terms', 'cookie', 'accessibility'
-      ];
-      
-      const isExcludedText = (text) => {
-        const lowerText = text.toLowerCase();
-        return excludePatterns.some(pattern => lowerText.includes(pattern)) ||
-               lowerText.length < 3 ||
-               lowerText.length > 50; // Player names are usually 3-50 chars
-      };
-      
       // Strategy 1: Target the specific odds table structure
       // Based on inspection: table > tbody > tr > td[0]=pos, td[1]=name, td[2]=score, td[5]=odds
       const tables = $('table');
