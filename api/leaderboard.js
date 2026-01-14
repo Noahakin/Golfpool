@@ -5,6 +5,8 @@ const chromium = require('@sparticuz/chromium');
 chromium.setGraphicsMode(false);
 
 module.exports = async (req, res) => {
+  console.log('Leaderboard endpoint called:', req.method, req.url, req.query);
+  
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
