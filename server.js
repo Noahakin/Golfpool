@@ -185,27 +185,43 @@ app.get('/api/leaderboard', async (req, res) => {
       const allTables = $('table');
       let oddsTable = null;
       
+      console.log('Looking for odds table...');
+      console.log('Total tables found:', allTables.length);
+      
       // Find the table with "Odds" column header
       allTables.each((idx, table) => {
         const $table = $(table);
         const headerText = $table.find('th, thead tr, tr:first-child').text().toLowerCase();
+        console.log(`Checking table ${idx}: header text (first 200 chars):`, headerText.substring(0, 200));
         if (headerText.includes('odds') && headerText.includes('player')) {
           oddsTable = $table;
+          console.log(`Found odds table at index ${idx}`);
           return false; // break
         }
       });
       
       // If not found, try the first table with 6+ columns
       if (!oddsTable) {
+        console.log('No table with "odds" and "player" found, trying tables with 6+ columns...');
         allTables.each((idx, table) => {
           const $table = $(table);
           const firstRow = $table.find('tr').first();
           const cells = firstRow.find('th, td');
+          console.log(`Table ${idx} has ${cells.length} cells in first row`);
           if (cells.length >= 6) {
             oddsTable = $table;
+            console.log(`Using table ${idx} with ${cells.length} columns`);
             return false; // break
           }
         });
+      }
+      
+      // If still no table, try to find div-based structure
+      if (!oddsTable) {
+        console.log('No suitable table found, checking for div-based structure...');
+        // Look for divs that might contain the odds data
+        const oddsContainers = $('div[class*="odds"], div[class*="player"], div[class*="betting"]');
+        console.log('Found divs with odds/player/betting classes:', oddsContainers.length);
       }
       
       if (oddsTable) {
