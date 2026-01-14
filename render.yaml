@@ -1,9 +1,8 @@
 services:
   - type: web
     name: golfpool-backend
-    env: node
-    buildCommand: apt-get update && apt-get install -y chromium chromium-driver && npm install
-    startCommand: npm start
+    env: docker
+    dockerfilePath: Dockerfile
     envVars:
       - key: NODE_ENV
         value: production
