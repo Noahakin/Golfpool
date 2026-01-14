@@ -130,8 +130,53 @@ app.get('/api/leaderboard', async (req, res) => {
                (text.includes('-') && /-?\d+/.test(text));      // -150
       };
       
+      // List of common navigation/menu items to exclude
+      const excludePatterns = [
+        'signature events', 'how it works', 'groupings official', 'waialae country club',
+        'how to watch', 'marketing partners', 'payne stewart award', 'fan council',
+        'social responsibility', 'fan shop', 'mastercard tickets', 'tournament', 'leaderboard',
+        'odds', 'schedule', 'players', 'news', 'video', 'shop', 'tickets', 'mobile app',
+        'follow us', 'about', 'contact', 'privacy', 'terms', 'cookie', 'accessibility'
+      ];
+      
+      const isExcludedText = (text) => {
+        const lowerText = text.toLowerCase();
+        return excludePatterns.some(pattern => lowerText.includes(pattern)) ||
+               lowerText.length < 3 ||
+               lowerText.length > 50; // Player names are usually 3-50 chars
+      };
+      
+      // List of common navigation/menu items to exclude
+      const excludePatterns = [
+        'signature events', 'how it works', 'groupings official', 'waialae country club',
+        'how to watch', 'marketing partners', 'payne stewart award', 'fan council',
+        'social responsibility', 'fan shop', 'mastercard tickets', 'tournament', 'leaderboard',
+        'odds', 'schedule', 'players', 'news', 'video', 'shop', 'tickets', 'mobile app',
+        'follow us', 'about', 'contact', 'privacy', 'terms', 'cookie', 'accessibility'
+      ];
+      
+      const isExcludedText = (text) => {
+        const lowerText = text.toLowerCase();
+        return excludePatterns.some(pattern => lowerText.includes(pattern)) ||
+               lowerText.length < 3 ||
+               lowerText.length > 50; // Player names are usually 3-50 chars
+      };
+      
       // Strategy 1: Look for tables with odds/leaderboard data
-      const tables = $('table');
+      // First, try to find tables that are specifically for odds/leaderboard
+      const oddsTables = $('table').filter((idx, table) => {
+        const $table = $(table);
+        const tableText = $table.text().toLowerCase();
+        // Look for tables that mention odds, betting, or have player-related content
+        return tableText.includes('odds') || 
+               tableText.includes('betting') || 
+               tableText.includes('player') ||
+               $table.find('[class*="odds"], [class*="player"], [class*="betting"]').length > 0;
+      });
+      
+      // If no specific odds tables found, use all tables
+      const tables = oddsTables.length > 0 ? oddsTables : $('table');
+      
       tables.each((tableIndex, table) => {
         const $table = $(table);
         const rows = $table.find('tr');
@@ -206,13 +251,23 @@ app.get('/api/leaderboard', async (req, res) => {
                 else if (/^-?\d+$/.test(text) && parseInt(text) < 100 && parseInt(text) > -30) {
                   if (!playerData.score) playerData.score = text;
                 }
-                // Player name (usually longer text, not numeric, not odds)
+                // Player name (usually longer text, not numeric, not odds, not excluded patterns)
                 else if (text.length > 2 && 
+                         text.length <= 50 &&
                          !/^\d+$/.test(text) && 
                          !isOdds(text) &&
+                         !isExcludedText(text) &&
                          !text.toLowerCase().includes('position') &&
                          !text.toLowerCase().includes('round') &&
-                         !text.toLowerCase().includes('total')) {
+                         !text.toLowerCase().includes('total') &&
+                         !text.toLowerCase().includes('signature') &&
+                         !text.toLowerCase().includes('how it works') &&
+                         !text.toLowerCase().includes('groupings') &&
+                         !text.toLowerCase().includes('country club') &&
+                         !text.toLowerCase().includes('marketing') &&
+                         !text.toLowerCase().includes('fan') &&
+                         !text.toLowerCase().includes('shop') &&
+                         !text.toLowerCase().includes('tickets')) {
                   if (!playerData.name) playerData.name = text;
                 }
               }
@@ -236,7 +291,10 @@ app.get('/api/leaderboard', async (req, res) => {
               }
             }
             
-            if (playerData.name && playerData.name.length > 1) {
+            // Only add if we have a valid player name (not excluded text)
+            if (playerData.name && 
+                playerData.name.length > 1 && 
+                !isExcludedText(playerData.name)) {
               if (!playerData.position) playerData.position = (players.length + 1).toString();
               if (!playerData.odds || playerData.odds === '') playerData.odds = 'N/A';
               players.push(playerData);
@@ -304,7 +362,7 @@ app.get('/api/leaderboard', async (req, res) => {
               odds = dataOdds;
             }
             
-            if (name && name.length > 1) {
+            if (name && name.length > 1 && !isExcludedText(name)) {
               players.push({
                 position: (index + 1).toString(),
                 name: name,
@@ -325,10 +383,16 @@ app.get('/api/leaderboard', async (req, res) => {
         allElements.each((idx, el) => {
           const text = cleanText($(el).text());
           // Look for text that might be a player name (2-4 words, capitalized)
+          // Must match pattern like "First Last" or "First Middle Last"
           if (text.match(/^[A-Z][a-z]+ [A-Z][a-z]+/) && 
               text.length > 5 && text.length < 50 &&
+              !isExcludedText(text) &&
               !text.includes('Tournament') && !text.includes('Open') &&
-              !text.includes('Leaderboard') && !text.includes('Odds')) {
+              !text.includes('Leaderboard') && !text.includes('Odds') &&
+              !text.includes('Signature') && !text.includes('How It Works') &&
+              !text.includes('Groupings') && !text.includes('Country Club') &&
+              !text.includes('Marketing') && !text.includes('Fan') &&
+              !text.includes('Shop') && !text.includes('Tickets')) {
             potentialPlayers.push({
               name: text,
               element: el
