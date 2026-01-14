@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGA Tour Leaderboard & Odds</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login/Signup Page -->
+    <div id="loginPage" class="login-page">
+        <div class="login-container">
+            <h1>🏌️ PGA Tour Fantasy</h1>
+            <p class="login-subtitle">Sony Open in Hawaii</p>
+            
+            <div id="loginForm" class="auth-form">
+                <h2>Login</h2>
+                <div class="form-group">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" placeholder="Enter your username" required>
+                </div>
+                <button type="button" id="loginBtn" class="btn-primary">Login</button>
+                <p class="auth-switch">Don't have an account? <a href="#" id="showSignup">Sign up</a></p>
+                <div id="loginError" class="auth-error hidden"></div>
+            </div>
+            
+            <div id="signupForm" class="auth-form hidden">
+                <h2>Sign Up</h2>
+                <div class="form-group">
+                    <label for="signupUsername">Username</label>
+                    <input type="text" id="signupUsername" placeholder="Choose a username" required>
+                    <small class="form-hint">Username must be at least 3 characters</small>
+                </div>
+                <button type="button" id="signupBtn" class="btn-primary">Sign Up</button>
+                <p class="auth-switch">Already have an account? <a href="#" id="showLogin">Login</a></p>
+                <div id="signupError" class="auth-error hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App (hidden until logged in) -->
+    <div id="mainApp" class="main-app hidden">
+        <div class="container">
+            <header>
+                <div class="header-content">
+                    <div>
+                        <h1>🏌️ PGA Tour Leaderboard & Odds</h1>
+                        <p class="subtitle">Sony Open in Hawaii</p>
+                    </div>
+                    <div class="user-info">
+                        <span id="currentUsername" class="username-display"></span>
+                        <button id="logoutBtn" class="btn-logout">Logout</button>
+                    </div>
+                </div>
+            </header>
+
+        <!-- Tab Navigation -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="leaderboard">📊 Leaderboard</button>
+            <button class="tab-btn" data-tab="team">👥 Select Team</button>
+            <button class="tab-btn" data-tab="scoreboard">🏆 My Scoreboard</button>
+        </div>
+
+        <!-- Leaderboard Tab -->
+        <div id="leaderboardTab" class="tab-content active">
+            <div class="controls">
+                <button id="refreshBtn" class="btn-primary">🔄 Refresh Data</button>
+                <span id="lastUpdated" class="last-updated"></span>
+            </div>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>Loading leaderboard data...</p>
+            </div>
+
+            <div id="error" class="error hidden"></div>
+
+            <div id="tournamentInfo" class="tournament-info"></div>
+
+            <div class="table-container">
+                <table id="leaderboardTable">
+                    <thead>
+                        <tr>
+                            <th>Position</th>
+                            <th>Player Name</th>
+                            <th>Odds</th>
+                            <th>Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboardBody">
+                        <tr>
+                            <td colspan="4" class="no-data">Click "🔄 Refresh Data" button above to load the leaderboard and odds from the PGA Tour website</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Team Selection Tab -->
+        <div id="teamTab" class="tab-content">
+            <div class="team-selection-container">
+                <h2>Select Your Team</h2>
+                <p class="team-instructions">Choose one golfer from each tier to build your team.</p>
+                
+                <div id="teamSelectionForm" class="team-form">
+                    <!-- Team selection will be populated here -->
+                </div>
+                
+                <div id="teamSubmittedMessage" class="team-message success hidden">
+                    <p>✅ You have already submitted a team! You can only submit one team per tournament.</p>
+                    <p>Go to the Scoreboard tab to view your team.</p>
+                </div>
+                
+                <div class="team-actions">
+                    <button id="submitTeamBtn" class="btn-primary" disabled>✅ Submit Team</button>
+                </div>
+                
+                <div id="teamSelectionMessage" class="team-message hidden"></div>
+            </div>
+        </div>
+
+        <!-- Scoreboard Tab -->
+        <div id="scoreboardTab" class="tab-content">
+            <div class="scoreboard-container">
+                <h2 id="scoreboardTitle">My Team Scoreboard</h2>
+                
+                <div id="noTeamMessage" class="no-team-message">
+                    <p>You haven't selected a team yet. Go to the "Select Team" tab to create your team.</p>
+                </div>
+                
+                <div id="scoreboardContent" class="scoreboard-content hidden">
+                    <div class="scoreboard-controls">
+                        <button id="refreshFromLeaderboardBtn" class="btn-primary">🔄 Sync Scores from Leaderboard</button>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table id="scoreboardTable">
+                            <thead>
+                                <tr>
+                                    <th>Tier</th>
+                                    <th>Player Name</th>
+                                    <th>Pre-Tournament Odds</th>
+                                    <th>Current Score</th>
+                                </tr>
+                            </thead>
+                            <tbody id="scoreboardBody">
+                            </tbody>
+                            <tfoot>
+                                <tr class="total-row">
+                                    <td colspan="3" class="total-label"><strong>Total Score:</strong></td>
+                                    <td class="total-score" id="totalScore">0</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,688 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+    color: #333;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+header {
+    background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+    color: white;
+    padding: 40px;
+    text-align: center;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.username-display {
+    font-size: 18px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 8px 16px;
+    border-radius: 20px;
+}
+
+.btn-logout {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: 2px solid white;
+    padding: 8px 20px;
+    font-size: 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.btn-logout:hover {
+    background: white;
+    color: #1e3c72;
+}
+
+/* Login Page Styles */
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.login-container {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    padding: 50px;
+    max-width: 450px;
+    width: 100%;
+    text-align: center;
+}
+
+.login-container h1 {
+    font-size: 2.5em;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.login-subtitle {
+    font-size: 1.2em;
+    color: #6c757d;
+    margin-bottom: 40px;
+}
+
+.auth-form {
+    text-align: left;
+}
+
+.auth-form h2 {
+    margin-bottom: 25px;
+    color: #333;
+    text-align: center;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #333;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    transition: border-color 0.3s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-hint {
+    display: block;
+    margin-top: 5px;
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.auth-switch {
+    text-align: center;
+    margin-top: 20px;
+    color: #6c757d;
+}
+
+.auth-switch a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.auth-switch a:hover {
+    text-decoration: underline;
+}
+
+.auth-error {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 12px;
+    border-radius: 6px;
+    margin-top: 15px;
+    border: 1px solid #f5c6cb;
+    font-size: 14px;
+}
+
+.main-app.hidden {
+    display: none;
+}
+
+.login-page.hidden {
+    display: none;
+}
+
+/* Tab Navigation */
+.tabs {
+    display: flex;
+    background: #f8f9fa;
+    border-bottom: 2px solid #e9ecef;
+    padding: 0;
+    margin: 0;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 15px 20px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 600;
+    color: #6c757d;
+    transition: all 0.3s;
+}
+
+.tab-btn:hover {
+    background: #e9ecef;
+    color: #333;
+}
+
+.tab-btn.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+    background: white;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+header h1 {
+    font-size: 2.5em;
+    margin-bottom: 10px;
+    font-weight: 700;
+}
+
+.subtitle {
+    font-size: 1.2em;
+    opacity: 0.9;
+}
+
+.controls {
+    padding: 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9fa;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    font-size: 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.last-updated {
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.loading {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.loading.hidden {
+    display: none;
+}
+
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.error {
+    background: #f8d7da;
+    color: #721c24;
+    padding: 20px;
+    margin: 20px;
+    border-radius: 8px;
+    border: 1px solid #f5c6cb;
+}
+
+.error.hidden {
+    display: none;
+}
+
+.tournament-info {
+    padding: 20px 30px;
+    background: #e7f3ff;
+    border-bottom: 2px solid #b3d9ff;
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #004085;
+}
+
+.table-container {
+    padding: 30px;
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+th {
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+td {
+    padding: 15px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+tbody tr {
+    transition: background-color 0.2s;
+}
+
+tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.position {
+    font-weight: 700;
+    color: #667eea;
+    width: 80px;
+}
+
+.player-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.odds {
+    font-weight: 600;
+    color: #28a745;
+}
+
+.score {
+    font-weight: 500;
+    color: #6c757d;
+}
+
+.no-data {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 40px !important;
+}
+
+/* Tier styling */
+.tier-header {
+    background: #f8f9fa !important;
+}
+
+.tier-header-cell {
+    padding: 20px 15px !important;
+    font-weight: 700 !important;
+    font-size: 16px !important;
+    text-align: center !important;
+    border-bottom: 3px solid !important;
+}
+
+.tier-1 .tier-header-cell {
+    background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%) !important;
+    color: #333 !important;
+    border-bottom-color: #ffc107 !important;
+}
+
+.tier-2 .tier-header-cell {
+    background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%) !important;
+    color: #333 !important;
+    border-bottom-color: #9e9e9e !important;
+}
+
+.tier-3 .tier-header-cell {
+    background: linear-gradient(135deg, #cd7f32 0%, #e6a85c 100%) !important;
+    color: white !important;
+    border-bottom-color: #b87333 !important;
+}
+
+.tier-4 .tier-header-cell {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    border-bottom-color: #5568d3 !important;
+}
+
+.tier-5 .tier-header-cell {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%) !important;
+    color: white !important;
+    border-bottom-color: #3d8bfd !important;
+}
+
+.tier-6 .tier-header-cell {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%) !important;
+    color: #333 !important;
+    border-bottom-color: #2dd573 !important;
+}
+
+.tier-1-row {
+    background-color: #fffef0;
+}
+
+.tier-1-row:hover {
+    background-color: #fffce6 !important;
+}
+
+.tier-2-row {
+    background-color: #f8f9fa;
+}
+
+.tier-2-row:hover {
+    background-color: #e9ecef !important;
+}
+
+.tier-3-row {
+    background-color: #fff5e6;
+}
+
+.tier-3-row:hover {
+    background-color: #ffe8cc !important;
+}
+
+.tier-4-row {
+    background-color: #f0f0ff;
+}
+
+.tier-4-row:hover {
+    background-color: #e0e0ff !important;
+}
+
+.tier-5-row {
+    background-color: #e6f7ff;
+}
+
+.tier-5-row:hover {
+    background-color: #bae7ff !important;
+}
+
+.tier-6-row {
+    background-color: #f0fff4;
+}
+
+.tier-6-row:hover {
+    background-color: #dcfce7 !important;
+}
+
+/* Team Selection Styles */
+.team-selection-container {
+    padding: 30px;
+}
+
+.team-selection-container h2 {
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.team-instructions {
+    color: #6c757d;
+    margin-bottom: 30px;
+    font-size: 14px;
+}
+
+.team-form {
+    margin-bottom: 30px;
+}
+
+.tier-selection {
+    margin-bottom: 25px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.tier-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #333;
+    font-size: 16px;
+}
+
+.player-select {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border: 2px solid #e9ecef;
+    border-radius: 6px;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+.player-select:hover {
+    border-color: #667eea;
+}
+
+.player-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.team-actions {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    font-size: 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.team-message {
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 20px;
+}
+
+.team-message.success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.team-message.info {
+    background: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+.no-data-message {
+    text-align: center;
+    color: #6c757d;
+    padding: 40px;
+    font-style: italic;
+}
+
+/* Scoreboard Styles */
+.scoreboard-container {
+    padding: 30px;
+}
+
+.scoreboard-container h2 {
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.no-team-message {
+    text-align: center;
+    padding: 60px 20px;
+    color: #6c757d;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin: 20px;
+}
+
+.scoreboard-controls {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.scoreboard-content {
+    margin-top: 20px;
+}
+
+#scoreboardTable {
+    margin-top: 20px;
+}
+
+.tier-cell {
+    font-weight: 600;
+    color: #667eea;
+}
+
+.score-cell {
+    width: 150px;
+}
+
+.score-cell {
+    font-weight: 600;
+    font-size: 18px;
+    color: #333;
+    text-align: center;
+}
+
+.total-row {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white;
+    font-weight: 700;
+}
+
+.total-label {
+    text-align: right;
+    padding: 20px 15px !important;
+}
+
+.total-score {
+    font-size: 24px;
+    padding: 20px 15px !important;
+    text-align: center;
+    font-weight: 700;
+}
+
+.success-message {
+    background: #d4edda;
+    color: #155724;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border: 1px solid #c3e6cb;
+    text-align: center;
+    font-weight: 600;
+}
+
+@media (max-width: 768px) {
+    header h1 {
+        font-size: 1.8em;
+    }
+    
+    .controls {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    table {
+        font-size: 14px;
+    }
+    
+    th, td {
+        padding: 10px;
+    }
+}
