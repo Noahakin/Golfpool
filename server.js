@@ -171,42 +171,107 @@ app.get('/api/odds', async (req, res) => {
     // Fetch fresh odds from The Odds API
     console.log('Fetching odds from The Odds API...');
     
-    // The Odds API v4 endpoint for golf outrights
-    const oddsApiUrl = `https://api.the-odds-api.com/v4/sports/golf/odds`;
-    const params = {
-      regions: 'us',
-      markets: 'outrights',
-      oddsFormat: 'american',
-      apiKey: apiKey
-    };
-    
-    const response = await axios.get(oddsApiUrl, {
-      params: params,
-      timeout: 30000
-    });
-    
-    if (!response.data || response.data.length === 0) {
-      return res.status(404).json({
-        error: 'No odds data available',
-        message: 'No golf tournaments with odds found. The tournament may not have odds available yet.'
+    // First, check available sports to find the correct golf sport key
+    let golfSportKey = 'golf';
+    try {
+      const sportsResponse = await axios.get(`https://api.the-odds-api.com/v4/sports`, {
+        params: { apiKey: apiKey },
+        timeout: 10000
       });
+      
+      if (sportsResponse.data) {
+        // Find golf sport key (might be 'golf', 'golf_pga', 'golf_masters', etc.)
+        const golfSport = sportsResponse.data.find(sport => 
+          sport.key && (sport.key.toLowerCase().includes('golf') || sport.title.toLowerCase().includes('golf'))
+        );
+        
+        if (golfSport) {
+          golfSportKey = golfSport.key;
+          console.log(`Found golf sport key: ${golfSportKey}`);
+        } else {
+          console.log('Golf not found in available sports. Available sports:', sportsResponse.data.map(s => s.key).join(', '));
+        }
+      }
+    } catch (sportsError) {
+      console.log('Could not fetch sports list, using default "golf" key');
     }
     
-    // Find the tournament (match by name or use first available)
-    let tournamentData = response.data.find(event => 
-      event.description && event.description.toLowerCase().includes(tournament.toLowerCase().split(' ')[0])
-    );
+    // Try to get events first, then odds for each event
+    let tournamentData = null;
     
-    if (!tournamentData && response.data.length > 0) {
-      // Use first available tournament if exact match not found
-      tournamentData = response.data[0];
-      console.log(`Using tournament: ${tournamentData.description || 'Unknown'}`);
+    try {
+      // Get events for golf
+      const eventsResponse = await axios.get(`https://api.the-odds-api.com/v4/sports/${golfSportKey}/events`, {
+        params: { apiKey: apiKey },
+        timeout: 30000
+      });
+      
+      if (eventsResponse.data && eventsResponse.data.length > 0) {
+        // Find matching tournament
+        tournamentData = eventsResponse.data.find(event => 
+          event.description && event.description.toLowerCase().includes(tournament.toLowerCase().split(' ')[0])
+        );
+        
+        if (!tournamentData) {
+          tournamentData = eventsResponse.data[0];
+          console.log(`Using tournament: ${tournamentData.description || 'Unknown'}`);
+        }
+      }
+    } catch (eventsError) {
+      console.log('Could not fetch events, trying direct odds endpoint...');
+    }
+    
+    // If we have an event, get odds for it; otherwise try the odds endpoint directly
+    let response;
+    if (tournamentData && tournamentData.id) {
+      // Get odds for specific event
+      const oddsApiUrl = `https://api.the-odds-api.com/v4/sports/${golfSportKey}/events/${tournamentData.id}/odds`;
+      response = await axios.get(oddsApiUrl, {
+        params: {
+          regions: 'us',
+          markets: 'outrights',
+          oddsFormat: 'american',
+          apiKey: apiKey
+        },
+        timeout: 30000
+      });
+      tournamentData = response.data;
+    } else {
+      // Try direct odds endpoint
+      const oddsApiUrl = `https://api.the-odds-api.com/v4/sports/${golfSportKey}/odds`;
+      response = await axios.get(oddsApiUrl, {
+        params: {
+          regions: 'us',
+          markets: 'outrights',
+          oddsFormat: 'american',
+          apiKey: apiKey
+        },
+        timeout: 30000
+      });
+      
+      if (!response.data || response.data.length === 0) {
+        return res.status(404).json({
+          error: 'No odds data available',
+          message: `No golf tournaments with odds found. Golf may not be available in The Odds API, or the tournament may not have odds yet. Try checking available sports at https://the-odds-api.com/liveapi/guides/v4/#sports-endpoint`
+        });
+      }
+      
+      // Find the tournament (match by name or use first available)
+      tournamentData = response.data.find(event => 
+        event.description && event.description.toLowerCase().includes(tournament.toLowerCase().split(' ')[0])
+      );
+      
+      if (!tournamentData && response.data.length > 0) {
+        // Use first available tournament if exact match not found
+        tournamentData = response.data[0];
+        console.log(`Using tournament: ${tournamentData.description || 'Unknown'}`);
+      }
     }
     
     if (!tournamentData) {
       return res.status(404).json({
         error: 'Tournament not found',
-        message: `Could not find odds for "${tournament}". Available tournaments: ${response.data.map(e => e.description).join(', ')}`
+        message: `Could not find odds for "${tournament}". Golf may not be available in The Odds API. Check available sports at https://the-odds-api.com/liveapi/guides/v4/#sports-endpoint`
       });
     }
     
@@ -279,18 +344,41 @@ app.get('/api/odds', async (req, res) => {
     
   } catch (error) {
     console.error('Error fetching odds:', error.message);
+    console.error('Error details:', error.response?.data || error.response?.status);
     
     if (error.response) {
-      return res.status(error.response.status).json({
+      const status = error.response.status;
+      const errorData = error.response.data;
+      
+      if (status === 404) {
+        return res.status(404).json({
+          error: 'Golf odds not available',
+          message: 'The Odds API does not currently support golf odds, or the endpoint structure has changed.',
+          details: 'Golf may not be available in The Odds API. You may need to use a different API or data source for golf betting odds.',
+          suggestion: 'Check available sports at: https://api.the-odds-api.com/v4/sports?apiKey=YOUR_KEY'
+        });
+      }
+      
+      if (status === 401) {
+        return res.status(401).json({
+          error: 'Authentication failed',
+          message: 'Invalid API key. Please check your ODDS_API_KEY in Render environment variables.',
+          details: 'Get a free API key at https://the-odds-api.com/'
+        });
+      }
+      
+      return res.status(status).json({
         error: 'Odds API error',
-        message: error.response.data?.message || error.message,
-        details: 'Check your ODDS_API_KEY and API quota'
+        message: errorData?.message || error.message,
+        status: status,
+        details: 'Check your ODDS_API_KEY and API quota at https://the-odds-api.com/dashboard'
       });
     }
     
     res.status(500).json({
       error: 'Failed to fetch odds',
-      message: error.message
+      message: error.message,
+      details: 'Network error or API unavailable. Check your internet connection and API key configuration.'
     });
   }
 });
